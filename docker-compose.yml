@@ -1,22 +1,48 @@
 services:
   db:
     image: postgres:16-alpine
-    container_name: onction-grid-db
+    container_name: mapping-db
     restart: unless-stopped
     environment:
-      POSTGRES_DB: onction_grid
-      POSTGRES_USER: onction
-      POSTGRES_PASSWORD: ${ONCTION_DB_PASSWORD:-onction_dev}
-    ports:
-      - "${ONCTION_DB_PORT:-5432}:5432"
+      POSTGRES_DB: mapping_grid
+      POSTGRES_USER: mapping
+      POSTGRES_PASSWORD: ${MAPPING_DB_PASSWORD:-mapping_dev}
     volumes:
-      - onction_grid_data:/var/lib/postgresql/data
+      - mapping_grid_data:/var/lib/postgresql/data
       - ./server/init:/docker-entrypoint-initdb.d:ro
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U onction -d onction_grid"]
+      test: ["CMD-SHELL", "pg_isready -U mapping -d mapping_grid"]
       interval: 5s
       timeout: 5s
       retries: 10
+    networks: [mapping]
+
+  api:
+    build: ./server
+    container_name: mapping-api
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgres://mapping:${MAPPING_DB_PASSWORD:-mapping_dev}@db:5432/mapping_grid
+      PORT: 4000
+      CORS_ORIGIN: ${MAPPING_CORS_ORIGIN:-*}
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:${MAPPING_API_PORT:-4001}:4000"
+    networks: [mapping]
+
+  web:
+    build: .
+    container_name: mapping-web
+    restart: unless-stopped
+    depends_on: [api]
+    ports:
+      - "127.0.0.1:${MAPPING_WEB_PORT:-4080}:80"
+    networks: [mapping]
+
+networks:
+  mapping:
 
 volumes:
-  onction_grid_data:
+  mapping_grid_data:

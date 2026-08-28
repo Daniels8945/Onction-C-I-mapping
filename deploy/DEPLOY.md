@@ -1,101 +1,131 @@
-# Deploying under /onction on the VPS
+# Deploying "mapping" at onction.com/mapping
 
-Assumes: Docker + Docker Compose, Node 18+, and Nginx already present on the
-VPS (all used by the other app). Run the `sudo` steps as your existing admin
-user, not as the new `onction` user.
+This is a distinct product from the main Onction platform already
+running on this VPS — it's called **mapping**, and everything here
+(Linux user, containers, network, URL path) is named that way on
+purpose so it never gets confused with Onction's main app/containers.
 
-## 1. Create a dedicated system user
+Everything for this app — Postgres, the API, and the built frontend —
+runs as three Docker containers under a dedicated `mapping` Linux
+user, isolated from Onction's existing stack on the same box. The
+host's existing Nginx (already serving onction.com) is the only shared
+component: it reverse-proxies the `/mapping/` path to this app's
+containers and everything else keeps working as before.
 
-```bash
-sudo adduser --system --group --home /home/onction --shell /usr/sbin/nologin onction
-sudo mkdir -p /home/onction/app
-sudo chown onction:onction /home/onction/app
-```
+Requires Docker + the compose plugin already installed on the VPS
+(Onction's stack already needs it, so it's likely there).
 
-## 2. Ship the code
+## 1. One-time: create the dedicated user
 
-From your machine (excludes node_modules/dist/.env — those are
-regenerated or created directly on the VPS):
-
-```bash
-rsync -av --exclude node_modules --exclude dist --exclude .env \
-  --exclude server/node_modules --exclude server/.env \
-  ./ youruser@your-vps:/home/onction/app/
-```
-
-## 3. Start Postgres (Docker)
+SSH into the VPS as your existing root/sudo admin user and run:
 
 ```bash
-cd /home/onction/app
-echo "ONCTION_DB_PASSWORD=$(openssl rand -hex 24)" | sudo tee .env
-echo "ONCTION_DB_PORT=5433" | sudo tee -a .env
-sudo docker compose up -d
+sudo adduser --disabled-password --gecos "" mapping
+sudo usermod -aG docker mapping
+sudo mkdir -p /home/mapping/app
+sudo chown -R mapping:mapping /home/mapping
 ```
 
-`server/init/01-onction-grid.sql` auto-runs on first container start —
-schema + seed data land automatically, no manual migration step.
+What each line does:
+- `adduser` — creates the `mapping` Linux user with its own home
+  directory (`/home/mapping`), no login password (SSH in via `su` or
+  keys only)
+- `usermod -aG docker` — lets `mapping` run `docker` / `docker compose`
+  without needing root for every deploy
+- `mkdir` + `chown` — preps and hands over the app directory
 
-## 4. Configure and install the backend
+Verify Docker is present first if you're not sure: `docker --version`.
+
+Once this repo is pushed to GitHub, `deploy/bootstrap.sh` does exactly
+these four steps as a single script — you can `scp` it over and run it
+instead of typing the above by hand on future boxes.
+
+Note: docker-group membership is effectively root-equivalent on this
+host (standard Docker caveat) — the isolation here is about not
+touching Onction's files/containers/ports, not a hard security
+sandbox. If you need real privilege separation, look at rootless
+Docker instead; out of scope for this quick deploy.
+
+## 2. Get the code onto the VPS
 
 ```bash
-sudo cp server/.env.production.example server/.env
+su - mapping
+git clone https://github.com/Daniels8945/Onction-C-I-mapping.git app
+cd app
 ```
 
-Edit `server/.env`:
-- `DATABASE_URL` — password must match `ONCTION_DB_PASSWORD` from step 3,
-  port must match `ONCTION_DB_PORT` (5433)
-- `PORT` — 4001 (or whatever you pick; must match the nginx snippet)
-- `CORS_ORIGIN` — your real domain, e.g. `https://yourdomain.example`
+## 3. Deploy
 
 ```bash
-cd /home/onction/app/server
-sudo -u onction npm install --omit=dev
+./deploy/deploy.sh
 ```
 
-## 5. Build the frontend
+First run generates `.env` (DB password + container ports) if it
+doesn't exist yet, then builds and starts all three containers:
 
-```bash
-cd /home/onction/app
-sudo -u onction npm install
-sudo -u onction npm run build
-```
+- `mapping-db` — Postgres, internal only, not exposed to the host at all
+- `mapping-api` — the Express API, bound to `127.0.0.1:4001`
+- `mapping-web` — Nginx serving the built React app, bound to `127.0.0.1:4080`
 
-This produces `dist/` with `base: /onction/` baked in and API calls
-pointed at the relative `/onction/api` path (see `.env.production`) —
-same-origin, so no CORS round-trip in the browser.
+`server/init/01-onction-grid.sql` auto-runs against a fresh `db`
+volume on first start — schema + seed data (Onction's PPA network
+data, which this tool maps) land automatically.
 
-## 6. systemd service for the API
+The script polls `/health` until the API responds and prints
+`docker compose ps` when it's up.
 
-```bash
-sudo cp deploy/onction-grid-api.service /etc/systemd/system/
-which node   # confirm this matches ExecStart in the unit file — edit if not /usr/bin/node
-sudo systemctl daemon-reload
-sudo systemctl enable --now onction-grid-api
-sudo systemctl status onction-grid-api
-curl http://127.0.0.1:4001/health   # should return {"ok":true}
-```
+## 4. Wire up the host Nginx
 
-## 7. Nginx
-
-Paste `deploy/nginx-onction.conf` into the existing `server { }` block for
-your domain (adjust the port/alias if you changed them above), then:
+Paste `deploy/nginx-mapping.conf` into the existing `server { }` block
+for **onction.com** (ports there already match the `.env` defaults —
+change both if you edited `MAPPING_API_PORT` / `MAPPING_WEB_PORT`),
+then:
 
 ```bash
 sudo nginx -t
 sudo systemctl reload nginx
 ```
 
-## 8. Verify
+## 5. Verify
 
-- `https://yourdomain.example/onction/` loads the app
-- `https://yourdomain.example/onction/api/health` returns `{"ok":true}`
+- `https://onction.com/mapping/` loads the app
+- `https://onction.com/mapping/api/health` returns `{"ok":true}`
 - Route & Loss Calculator returns a result with the route line drawn
 
 ## Redeploying after a code change
 
 ```bash
-# ship new code (step 2), then:
-cd /home/onction/app && sudo -u onction npm run build
-cd server && sudo -u onction npm install --omit=dev
-sudo systemctl restart onction-grid-api
+cd /home/mapping/app
+git pull
+./deploy/deploy.sh
+```
+
+`deploy.sh` is safe to re-run — it rebuilds images and recreates only
+the containers whose image actually changed.
+
+## If you ever need to change the DB password
+
+Postgres only applies `POSTGRES_PASSWORD` the first time a volume
+initializes. Editing `MAPPING_DB_PASSWORD` in `.env` after that does
+nothing by itself — the API will start failing DB auth. Either:
+
+```bash
+docker exec mapping-db psql -U mapping -d mapping_grid -c \
+  "ALTER ROLE mapping WITH PASSWORD 'new-password-here';"
+```
+
+or, if the data doesn't matter, wipe and reinit:
+
+```bash
+docker compose down -v   # destroys the db volume — reseeds from server/init on next up
+docker compose up -d
+```
+
+## Useful commands
+
+```bash
+docker compose logs -f api      # tail API logs
+docker compose logs -f web      # tail frontend/nginx logs
+docker compose restart api      # restart just the API
+docker compose down             # stop everything (keeps the db volume)
 ```
