@@ -29,7 +29,7 @@ services:
       db:
         condition: service_healthy
     ports:
-      - "127.0.0.1:${MAPPING_API_PORT:-4001}:4000"
+      - "${MAPPING_BIND_ADDR:-127.0.0.1}:${MAPPING_API_PORT:-4001}:4000"
     networks: [mapping]
 
   web:
@@ -38,7 +38,7 @@ services:
     restart: unless-stopped
     depends_on: [api]
     ports:
-      - "127.0.0.1:${MAPPING_WEB_PORT:-4080}:80"
+      - "${MAPPING_BIND_ADDR:-127.0.0.1}:${MAPPING_WEB_PORT:-4080}:80"
     networks: [mapping]
 
 networks:

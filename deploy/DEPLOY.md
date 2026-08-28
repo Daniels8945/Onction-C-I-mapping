@@ -6,14 +6,23 @@ running on this VPS — it's called **mapping**, and everything here
 purpose so it never gets confused with Onction's main app/containers.
 
 Everything for this app — Postgres, the API, and the built frontend —
-runs as three Docker containers under a dedicated `mapping` Linux
-user, isolated from Onction's existing stack on the same box. The
-host's existing Nginx (already serving onctionenergy.com) is the only shared
-component: it reverse-proxies the `/mapping/` path to this app's
-containers and everything else keeps working as before.
+runs as three Docker containers under a dedicated `mapping` Linux user.
 
-Requires Docker + the compose plugin already installed on the VPS
-(Onction's stack already needs it, so it's likely there).
+**This runs on a separate VPS from the one serving onctionenergy.com.**
+Confirmed setup:
+- `144.91.104.174` — this app (mapping), the box these steps target
+- `46.105.211.204` — the box Cloudflare/DNS actually points
+  onctionenergy.com at, running Onction's main site + its Nginx
+
+Since DNS resolves by hostname only (not by path), Nginx on
+`46.105.211.204` has to reverse-proxy `/mapping/` across the network to
+`144.91.104.174` — see "Cross-server setup" below for the exact steps.
+If mapping ever moves onto the same box as the main site, skip that
+section and use `deploy/nginx-mapping.conf` (localhost proxy) instead
+of `deploy/nginx-mapping-origin.conf`.
+
+Requires Docker + the compose plugin already installed on
+144.91.104.174.
 
 ## 1. One-time: create the dedicated user
 
@@ -64,8 +73,11 @@ First run generates `.env` (DB password + container ports) if it
 doesn't exist yet, then builds and starts all three containers:
 
 - `mapping-db` — Postgres, internal only, not exposed to the host at all
-- `mapping-api` — the Express API, bound to `127.0.0.1:4001`
-- `mapping-web` — Nginx serving the built React app, bound to `127.0.0.1:4080`
+- `mapping-api` — the Express API, bound to `127.0.0.1:4001` by default
+- `mapping-web` — Nginx serving the built React app, bound to `127.0.0.1:4080` by default
+
+(Step 4 below changes that binding to this box's public IP, since
+Nginx for onctionenergy.com is on a different server.)
 
 `server/init/01-onction-grid.sql` auto-runs against a fresh `db`
 volume on first start — schema + seed data (Onction's PPA network
@@ -74,19 +86,72 @@ data, which this tool maps) land automatically.
 The script polls `/health` until the API responds and prints
 `docker compose ps` when it's up.
 
-## 4. Wire up the host Nginx
+## 4. Cross-server setup (do this before step 5)
 
-Paste `deploy/nginx-mapping.conf` into the existing `server { }` block
-for **onctionenergy.com** (ports there already match the `.env` defaults —
-change both if you edited `MAPPING_API_PORT` / `MAPPING_WEB_PORT`),
-then:
+`144.91.104.174` and `46.105.211.204` are different providers with no
+private network between them, so this crosses the public internet,
+locked down by source IP.
+
+**On 144.91.104.174 (this box)** — edit `.env` (created in step 3) and
+set:
+
+```
+MAPPING_BIND_ADDR=144.91.104.174
+```
+
+then recreate the containers so the port binding picks it up:
+
+```bash
+docker compose up -d
+```
+
+Now lock the ports down to only accept traffic from the main server.
+**Important:** Docker rewrites iptables directly and routes published
+container ports through the `DOCKER-USER` chain — a plain `ufw allow`
+rule does **not** reliably block Docker-published ports, it'll look
+firewalled while actually being open to the whole internet. Use
+`DOCKER-USER` directly:
+
+```bash
+sudo iptables -I DOCKER-USER -p tcp -s 46.105.211.204 -j ACCEPT
+sudo iptables -A DOCKER-USER -p tcp --dport 4001 -j DROP
+sudo iptables -A DOCKER-USER -p tcp --dport 4080 -j DROP
+```
+
+Make it survive a reboot:
+
+```bash
+sudo apt-get install -y iptables-persistent   # prompts to save current rules — say yes
+sudo netfilter-persistent save
+```
+
+Verify from the *other* box (46.105.211.204) that it can reach these
+ports, and confirm from literally anywhere else that it can't:
+
+```bash
+# from 46.105.211.204 — should succeed:
+curl -sf http://144.91.104.174:4001/health
+
+# from your own laptop/elsewhere — should hang/refuse:
+curl -m 5 http://144.91.104.174:4001/health
+```
+
+## 5. Wire up Nginx on the main server (46.105.211.204)
+
+This part happens on the *other* box — the one Cloudflare/DNS actually
+points onctionenergy.com at, not 144.91.104.174.
+
+Paste `deploy/nginx-mapping-origin.conf` into the existing `server { }`
+block for onctionenergy.com there (it already targets
+`144.91.104.174:4001` / `:4080` — only edit it if you changed
+`MAPPING_API_PORT` / `MAPPING_WEB_PORT` in step 3), then:
 
 ```bash
 sudo nginx -t
 sudo systemctl reload nginx
 ```
 
-## 5. Verify
+## 6. Verify
 
 - `https://onctionenergy.com/mapping/` loads the app
 - `https://onctionenergy.com/mapping/api/health` returns `{"ok":true}`

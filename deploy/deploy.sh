@@ -12,6 +12,11 @@ MAPPING_DB_PASSWORD=$(openssl rand -hex 24)
 MAPPING_CORS_ORIGIN=*
 MAPPING_API_PORT=4001
 MAPPING_WEB_PORT=4080
+# Leave as 127.0.0.1 if Nginx for onctionenergy.com runs on THIS box.
+# If it's on a different server, set this to this VPS's public IP so
+# that server can reach these containers — see deploy/DEPLOY.md's
+# "cross-server" section for the firewall rule that has to go with it.
+MAPPING_BIND_ADDR=127.0.0.1
 EOF
   echo "Wrote .env — edit MAPPING_CORS_ORIGIN to https://onctionenergy.com/ once it's live."
 fi
