@@ -31,8 +31,8 @@ export default function App() {
     pins, addPin, flyToPin, removePin, clearPins,
     runNearestGenco, clearAnalysis, exportGeoJSON,
     gridStatus, gridError, gridParties, gridLossModels, gridAtccScenarios,
-    gridRouteResult, gridBestSource, gridPresetGenco, gridPresetDest,
-    computeGridRoute, computeGridBestSource, clearGridRoute,
+    gridRouteResult, gridBestSource, gridPresetGenco, gridPresetDest, gridNearby,
+    computeGridRoute, computeGridBestSource, clearGridRoute, applyCustomRoute,
   } = useNigeriaMap({ isDark, BASEMAP });
 
   // Sync theme class + basemap on <html> whenever isDark actually changes.
@@ -94,9 +94,11 @@ export default function App() {
           gridBestSource={gridBestSource}
           gridPresetGenco={gridPresetGenco}
           gridPresetDest={gridPresetDest}
+          gridNearby={gridNearby}
           onComputeGridRoute={computeGridRoute}
           onComputeGridBestSource={computeGridBestSource}
           onClearGridRoute={clearGridRoute}
+          onApplyCustomRoute={applyCustomRoute}
         />
 
         {/* Map area */}

@@ -15,8 +15,8 @@ export default function Sidebar({
   pins, onFlyToPin, onRemovePin, onClearPins,
   isCollapsed, onToggleCollapse,
   gridStatus, gridError, gridParties, gridLossModels, gridAtccScenarios,
-  gridRouteResult, gridBestSource, gridPresetGenco, gridPresetDest,
-  onComputeGridRoute, onComputeGridBestSource, onClearGridRoute,
+  gridRouteResult, gridBestSource, gridPresetGenco, gridPresetDest, gridNearby,
+  onComputeGridRoute, onComputeGridBestSource, onClearGridRoute, onApplyCustomRoute,
 }) {
   return (
     <>
@@ -115,8 +115,9 @@ export default function Sidebar({
                 gridLossModels={gridLossModels} gridAtccScenarios={gridAtccScenarios}
                 gridRouteResult={gridRouteResult} gridBestSource={gridBestSource}
                 presetGenco={gridPresetGenco} presetDest={gridPresetDest}
+                pins={pins}
                 onComputeRoute={onComputeGridRoute} onComputeBestSource={onComputeGridBestSource}
-                onClear={onClearGridRoute}
+                onClear={onClearGridRoute} onApplyCustomRoute={onApplyCustomRoute}
               />
             </div>
 
@@ -139,6 +140,43 @@ export default function Sidebar({
                             <span className="text-muted-foreground flex-shrink-0">{k}</span>
                             <span className="text-foreground text-right break-words max-w-[150px]">{v}</span>
                           </div>
+                        ))}
+                      </CardContent>
+                    </Card>
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+
+            {/* Nearest Offtakers (clicked a GenCo) / Nearest GenCos (clicked an Offtaker) —
+                read straight off the precomputed route table, ranked by total distance. */}
+            <AnimatePresence>
+              {gridNearby && gridNearby.items.length > 0 && (
+                <motion.div
+                  key={`${gridNearby.sourceKind}-${gridNearby.sourceName}`}
+                  initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }}
+                  transition={{ duration: 0.18 }}
+                >
+                  <SectionTitle hint="Every offtaker/GenCo on the other side of this one, ranked by grid-routed distance (nearest first) — from the precomputed route table, no extra request.">
+                    {gridNearby.sourceKind === "GenCo" ? "Nearest Offtakers" : "Nearest GenCos"}
+                  </SectionTitle>
+                  <div className="px-3">
+                    <Card>
+                      <CardContent className="pt-3">
+                        <p className="text-[9px] text-muted-foreground mb-1.5 truncate">to {gridNearby.sourceName}</p>
+                        {gridNearby.items.map((it, i) => (
+                          <button
+                            key={it.name}
+                            onClick={() => onComputeGridRoute(
+                              gridNearby.sourceKind === "GenCo"
+                                ? { genco: gridNearby.sourceName, dest: it.name }
+                                : { genco: it.name, dest: gridNearby.sourceName }
+                            )}
+                            className={`w-full flex justify-between items-baseline gap-2 text-[10px] py-1 border-t border-border text-left transition-colors hover:text-primary ${i === 0 ? "text-primary" : "text-foreground/90"}`}
+                          >
+                            <span className="truncate">{i + 1}. {it.name}</span>
+                            <span className="flex-shrink-0 text-muted-foreground">{it.total_km} km</span>
+                          </button>
                         ))}
                       </CardContent>
                     </Card>

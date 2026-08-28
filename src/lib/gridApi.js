@@ -12,6 +12,7 @@ export const gridApi = {
   gencos:      () => get("/api/gencos"),
   discos:      () => get("/api/discos"),
   offtakers:   () => get("/api/offtakers"),
+  routes:      () => get("/api/routes"),
   lossModels:  () => get("/api/loss-models"),
   atccScenarios: () => get("/api/atcc-scenarios"),
   route: ({ genco, dest, lat, lng, lossModel, scenario, mw }) => {

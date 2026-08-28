@@ -32,8 +32,10 @@ const INIT_VIS = {
   discos: false, gencos: true, traders: true,  // gencos + traders ON by default
   // transmission and buffers hidden — toggle via code only
   transmission: false, buffers: false,
-  // Onction Grid layers off by default — user opts in via the sidebar
-  gridSubstations: false, gridEdges: false, gridGencos: false, gridDiscos: false, gridOfftakers: false,
+  // GenCos + Offtakers ON by default — the sidebar's own hint text already tells
+  // users to click these markers (nearest-offtaker/GenCo lookup, route calculator),
+  // so they can't be opt-in only. Substations/edges/DisCos stay opt-in (dense, map-only).
+  gridSubstations: false, gridEdges: false, gridGencos: true, gridDiscos: false, gridOfftakers: true,
   gridRoute: true, // visibility of this group tracks whether a route is computed, not a manual toggle
 };
 
@@ -62,6 +64,7 @@ export default function useNigeriaMap({ isDark, BASEMAP } = {}) {
   // ── Onction Grid Atlas state (live API data) ─────────────────────────
   const gridNodesRef    = useRef(new Map()); // substation name -> {lat, lon}
   const gridPartiesRef  = useRef({ gencos: [], discos: [], offtakers: [] });
+  const gridRouteTableRef = useRef([]); // the precomputed 182-row genco x destination table (/api/routes)
   const gridAtlasDataRef = useRef(null); // raw fetch response, cached so theme swaps don't re-hit the API
   const lastGridRouteRef = useRef(null); // { result, destCoords } — redrawn after each theme swap
   const listenersBoundRef = useRef(false); // click/hover handlers are delegated and must be bound only once
@@ -76,6 +79,9 @@ export default function useNigeriaMap({ isDark, BASEMAP } = {}) {
   // the map and the calculator are otherwise two disconnected UIs with no obvious link.
   const [gridPresetGenco, setGridPresetGenco] = useState(null);
   const [gridPresetDest,  setGridPresetDest]  = useState(null);
+  // Ranked "nearest offtakers" (clicked a GenCo) or "nearest GenCos" (clicked an
+  // Offtaker), read straight off the precomputed route table — no extra API calls.
+  const [gridNearby, setGridNearby] = useState(null); // { sourceKind: "GenCo"|"Offtaker", sourceName, items: [...] }
 
   useEffect(() => { modeRef.current = mode; }, [mode]);
   useEffect(() => { layerVisRef.current = layerVis; }, [layerVis]);
@@ -112,7 +118,9 @@ export default function useNigeriaMap({ isDark, BASEMAP } = {}) {
   // — needed after every theme swap, since setStyle() wipes the old ones.
   function _redrawActiveGridRoute(map) {
     const active = lastGridRouteRef.current;
-    if (active) _drawGridRoute(map, active.result, active.destCoords);
+    if (!active) return;
+    if (active.result?.isCustom && active.resolvedNodes) _drawCustomRoute(map, active.resolvedNodes);
+    else _drawGridRoute(map, active.result, active.destCoords);
   }
 
   // Theme swap: MapLibre vector styles must be fully swapped via setStyle(),
@@ -361,11 +369,13 @@ export default function useNigeriaMap({ isDark, BASEMAP } = {}) {
     setGridStatus("loading");
     Promise.all([
       gridApi.substations(), gridApi.gridEdges(), gridApi.gencos(),
-      gridApi.discos(), gridApi.offtakers(), gridApi.lossModels(), gridApi.atccScenarios(),
-    ]).then(([substations, edges, gencos, discos, offtakers, lossModels, atccScenarios]) => {
+      gridApi.discos(), gridApi.offtakers(), gridApi.routes(),
+      gridApi.lossModels(), gridApi.atccScenarios(),
+    ]).then(([substations, edges, gencos, discos, offtakers, routes, lossModels, atccScenarios]) => {
       if (mapRef.current !== map) return; // stale map from a StrictMode double-mount — see the "load" handler above
       gridNodesRef.current = new Map(substations.map(s => [s.name, s]));
       gridPartiesRef.current = { gencos, discos, offtakers };
+      gridRouteTableRef.current = routes;
       gridAtlasDataRef.current = { substations, edges, gencos, discos, offtakers };
       setGridParties({ gencos, discos, offtakers });
       setGridLossModels(lossModels);
@@ -433,6 +443,22 @@ export default function useNigeriaMap({ isDark, BASEMAP } = {}) {
     map.addLayer({ id: "grid-offtaker-labels", type: "symbol", source: "grid-offtaker-src", minzoom: 7, layout: { "text-field": ["get", "name"], "text-font": ["Noto Sans Regular"], "text-size": 8, "text-offset": [0, 1.5], "text-anchor": "top", "text-allow-overlap": false }, paint: { "text-color": "#334455", "text-halo-color": "#fff", "text-halo-width": 1.5 } });
   }
 
+  // Ranks the OTHER side of the precomputed route table against `name` —
+  // e.g. every offtaker a GenCo reaches, or every GenCo that reaches an offtaker —
+  // by total distance, nearest first. Reads the cached table; no network call.
+  function _nearestFor(name, sourceKind) {
+    const rows = gridRouteTableRef.current.filter(r =>
+      sourceKind === "GenCo" ? (r.genco === name && r.dest_kind === "offtaker") : r.dest_name === name
+    );
+    return rows
+      .slice()
+      .sort((a, b) => a.total_km - b.total_km)
+      .map(r => ({
+        name: sourceKind === "GenCo" ? r.dest_name : r.genco,
+        routed_km: r.routed_km, last_mile_km: r.last_mile_km, total_km: r.total_km, hop_count: r.hop_count,
+      }));
+  }
+
   function _bindGridAtlasHandlers(map) {
     map.on("click", "grid-genco-circle", e => {
       featureHandled.current = true;
@@ -442,6 +468,7 @@ export default function useNigeriaMap({ isDark, BASEMAP } = {}) {
         ["Connection", p.connection_node], ["Capacity", p.capacity_note || ""],
       ] });
       setGridPresetGenco(p.name);
+      setGridNearby({ sourceKind: "GenCo", sourceName: p.name, items: _nearestFor(p.name, "GenCo") });
     });
     map.on("mouseenter", "grid-genco-circle", () => { map.getCanvas().style.cursor = "pointer"; });
     map.on("mouseleave", "grid-genco-circle", () => { map.getCanvas().style.cursor = ""; });
@@ -454,6 +481,7 @@ export default function useNigeriaMap({ isDark, BASEMAP } = {}) {
         ["Injection node", p.injection_node], ["Last mile", `${p.last_mile_km} km`],
       ] });
       setGridPresetDest(p.name);
+      setGridNearby(null); // this list is only defined for GenCo <-> Offtaker
     });
     map.on("mouseenter", "grid-disco-circle", () => { map.getCanvas().style.cursor = "pointer"; });
     map.on("mouseleave", "grid-disco-circle", () => { map.getCanvas().style.cursor = ""; });
@@ -466,6 +494,7 @@ export default function useNigeriaMap({ isDark, BASEMAP } = {}) {
         ["Injection node", p.injection_node], ["Last mile", `${p.last_mile_km} km`],
       ] });
       setGridPresetDest(p.name);
+      setGridNearby({ sourceKind: "Offtaker", sourceName: p.name, items: _nearestFor(p.name, "Offtaker") });
     });
     map.on("mouseenter", "grid-offtaker-circle", () => { map.getCanvas().style.cursor = "pointer"; });
     map.on("mouseleave", "grid-offtaker-circle", () => { map.getCanvas().style.cursor = ""; });
@@ -676,6 +705,120 @@ export default function useNigeriaMap({ isDark, BASEMAP } = {}) {
     }
   }
 
+  // Draws a manually-edited (admin override) route straight from already-resolved
+  // coordinates — unlike _drawGridRoute, the named points here can be a GenCo,
+  // DisCo, offtaker, or substation in any position, not just substation-to-substation
+  // hops, so it can't reuse gridNodesRef's substation-only lookup.
+  function _drawCustomRoute(map, resolvedNodes) {
+    const coords = resolvedNodes.map(n => [n.resolved.lon, n.resolved.lat]);
+    const lines = [];
+    if (coords.length >= 3) {
+      lines.push({ type: "Feature", properties: { kind: "trunk" }, geometry: { type: "LineString", coordinates: coords.slice(0, -1) } });
+    }
+    if (coords.length >= 2) {
+      lines.push({ type: "Feature", properties: { kind: "lastmile" }, geometry: { type: "LineString", coordinates: coords.slice(-2) } });
+    }
+    map.getSource("grid-route-line-src")?.setData({ type: "FeatureCollection", features: lines });
+
+    const pts = resolvedNodes.slice(1, -1).map(n => ({
+      type: "Feature", properties: { kind: "hop", name: n.name }, geometry: { type: "Point", coordinates: [n.resolved.lon, n.resolved.lat] },
+    }));
+    const last = resolvedNodes[resolvedNodes.length - 1];
+    pts.push({ type: "Feature", properties: { kind: "dest", name: last.name }, geometry: { type: "Point", coordinates: [last.resolved.lon, last.resolved.lat] } });
+    map.getSource("grid-route-pt-src")?.setData({ type: "FeatureCollection", features: pts });
+
+    const bounds = coords.reduce((b, c) => b.extend(c), new maplibregl.LngLatBounds(coords[0], coords[0]));
+    map.fitBounds(bounds, { padding: 60, maxZoom: 9, duration: 1200, essential: true, easing: (t) => 1 - Math.pow(1 - t, 3) });
+  }
+
+  // Looks a typed name up across every party/node type the calculator knows about.
+  function _resolveNodeByName(rawName) {
+    const name = rawName.trim();
+    const sub = gridNodesRef.current.get(name);
+    if (sub) return { lat: sub.lat, lon: sub.lon, kind: "substation" };
+    const { gencos, discos, offtakers } = gridPartiesRef.current;
+    const g = gencos.find(x => x.name === name);    if (g) return { lat: g.lat, lon: g.lon, kind: "genco", raw: g };
+    const d = discos.find(x => x.name === name);    if (d) return { lat: d.lat, lon: d.lon, kind: "disco", raw: d };
+    const o = offtakers.find(x => x.name === name); if (o) return { lat: o.lat, lon: o.lon, kind: "offtaker", raw: o };
+    return null;
+  }
+
+  // Admin override: parse a hand-edited "A → B → C" chain, resolve each name to
+  // real coordinates, and treat it as the route — straight-line between the named
+  // points (there's no corridor-network entry for an arbitrary shortcut like this,
+  // so these distances are estimates, not TCN corridor lengths).
+  const applyCustomRoute = useCallback((chainText, { lossModel, scenario } = {}) => {
+    const names = chainText.split(/→|->/).map(s => s.trim()).filter(Boolean);
+    if (names.length < 2) {
+      setGridRouteResult({ error: "Enter at least a source and a destination, separated by →." });
+      return null;
+    }
+    const nodes = names.map(name => ({ name, resolved: _resolveNodeByName(name) }));
+    const missing = nodes.filter(n => !n.resolved).map(n => n.name);
+    if (missing.length) {
+      setGridRouteResult({ error: `Unrecognized location${missing.length > 1 ? "s" : ""}: ${missing.join(", ")}` });
+      return null;
+    }
+
+    const hops = [];
+    for (let i = 0; i < nodes.length - 1; i++) {
+      const a = nodes[i].resolved, b = nodes[i + 1].resolved;
+      const { distanceKm } = measureDistance([a.lon, a.lat], [b.lon, b.lat]);
+      hops.push({ seq: i + 1, from_node: nodes[i].name, to_node: nodes[i + 1].name, km: Math.round(distanceKm * 10) / 10 });
+    }
+    const lastMileKm = hops[hops.length - 1].km;
+    const trunkHops = hops.slice(0, -1);
+    const routedKm = trunkHops.reduce((s, h) => s + h.km, 0);
+    const totalKm = routedKm + lastMileKm;
+
+    const model = gridLossModels.find(m => m.code === lossModel) || gridLossModels.find(m => m.is_default)
+      || { code: "base", label: "Base loading", fixed_pct: 2, per_100km_pct: 1 };
+    const lossPct = Math.round((model.fixed_pct + (routedKm / 100) * model.per_100km_pct) * 100) / 100;
+
+    const gencoRaw = nodes[0].resolved.raw;
+    const destRaw  = nodes[nodes.length - 1].resolved.raw;
+    const destMw   = destRaw?.capacity_mw ?? null;
+    const atcc = scenario ? gridAtccScenarios.find(a => a.code === scenario) : null;
+    const projection = destMw != null ? (() => {
+      const contracted_kwh = destMw * 1000 * 24 * 30;
+      const delivered_kwh  = contracted_kwh * (1 - lossPct / 100);
+      return {
+        contracted_kwh, delivered_kwh,
+        recovered_kwh: atcc ? delivered_kwh * (1 - atcc.atcc_pct / 100) : null,
+        transmission_loss_kwh: contracted_kwh - delivered_kwh,
+        atcc_loss_kwh: atcc ? delivered_kwh * (atcc.atcc_pct / 100) : null,
+      };
+    })() : null;
+
+    const result = {
+      genco: nodes[0].name,
+      destination: nodes[nodes.length - 1].name,
+      dest_kind: destRaw ? (nodes[nodes.length - 1].resolved.kind === "offtaker" ? "offtaker" : "disco") : "point",
+      injection_node: nodes[nodes.length - 2].name,
+      routed_km: Math.round(routedKm * 10) / 10,
+      last_mile_km: lastMileKm,
+      total_km: Math.round(totalKm * 10) / 10,
+      hop_count: trunkHops.length,
+      hops: trunkHops,
+      loss_model: model,
+      loss_pct: lossPct,
+      commitment: gencoRaw?.commitment ?? null,
+      tariff_ngn_kwh: gencoRaw?.tariff_ngn_kwh ?? null,
+      dest_mw: destMw,
+      atcc_scenario: atcc || null,
+      projection,
+      isCustom: true,
+    };
+
+    setGridRouteResult(result);
+    setGridBestSource(null);
+    const last = nodes[nodes.length - 1].resolved;
+    const destCoords = [last.lon, last.lat];
+    lastGridRouteRef.current = { result, destCoords, resolvedNodes: nodes };
+    if (mapRef.current) _drawCustomRoute(mapRef.current, nodes);
+    return result;
+  }, [gridLossModels, gridAtccScenarios]);
+
   function _resolveDestCoords(destName, lat, lng) {
     if (lat != null && lng != null) return [Number(lng), Number(lat)];
     const { offtakers, discos } = gridPartiesRef.current;
@@ -686,10 +829,13 @@ export default function useNigeriaMap({ isDark, BASEMAP } = {}) {
     return null;
   }
 
-  const computeGridRoute = useCallback(async ({ genco, dest, lat, lng, lossModel, scenario, mw }) => {
+  // `label` is display-only, for a pinned point that has no name the API knows about —
+  // the backend just calls it "(lat, lng)" since it only resolves lat/lng to a substation.
+  const computeGridRoute = useCallback(async ({ genco, dest, lat, lng, label, lossModel, scenario, mw }) => {
     try {
       const result = await gridApi.route({ genco, dest, lat, lng, lossModel, scenario, mw });
       if (result.error) { setGridRouteResult(result); return null; }
+      if (label) result.destination = label;
       setGridRouteResult(result);
       setGridBestSource(null);
       const destCoords = _resolveDestCoords(dest, lat, lng);
@@ -702,10 +848,12 @@ export default function useNigeriaMap({ isDark, BASEMAP } = {}) {
     }
   }, []);
 
-  const computeGridBestSource = useCallback(async ({ dest, lat, lng, lossModel, scenario, mw }) => {
+  const computeGridBestSource = useCallback(async ({ dest, lat, lng, label, lossModel, scenario, mw }) => {
     try {
       const { destination, results } = await gridApi.bestSource({ dest, lat, lng, lossModel, scenario, mw });
-      setGridBestSource({ destination, results });
+      const displayDest = label || destination;
+      if (label) results.forEach(r => { r.destination = label; });
+      setGridBestSource({ destination: displayDest, results });
       setGridRouteResult(null);
       const best = results[0];
       const destCoords = _resolveDestCoords(dest, lat, lng);
@@ -746,7 +894,7 @@ export default function useNigeriaMap({ isDark, BASEMAP } = {}) {
     runNearestGenco, clearAnalysis, exportGeoJSON, searchAndFly,
     // Onction Grid Atlas
     gridStatus, gridError, gridParties, gridLossModels, gridAtccScenarios,
-    gridRouteResult, gridBestSource, gridPresetGenco, gridPresetDest,
-    computeGridRoute, computeGridBestSource, clearGridRoute,
+    gridRouteResult, gridBestSource, gridPresetGenco, gridPresetDest, gridNearby,
+    computeGridRoute, computeGridBestSource, clearGridRoute, applyCustomRoute,
   };
 }
