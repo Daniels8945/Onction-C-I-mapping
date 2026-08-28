@@ -1,4 +1,4 @@
-# Deploying "mapping" at onction.com/mapping
+# Deploying "mapping" at onctionenergy.com/mapping
 
 This is a distinct product from the main Onction platform already
 running on this VPS — it's called **mapping**, and everything here
@@ -8,7 +8,7 @@ purpose so it never gets confused with Onction's main app/containers.
 Everything for this app — Postgres, the API, and the built frontend —
 runs as three Docker containers under a dedicated `mapping` Linux
 user, isolated from Onction's existing stack on the same box. The
-host's existing Nginx (already serving onction.com) is the only shared
+host's existing Nginx (already serving onctionenergy.com) is the only shared
 component: it reverse-proxies the `/mapping/` path to this app's
 containers and everything else keeps working as before.
 
@@ -77,7 +77,7 @@ The script polls `/health` until the API responds and prints
 ## 4. Wire up the host Nginx
 
 Paste `deploy/nginx-mapping.conf` into the existing `server { }` block
-for **onction.com** (ports there already match the `.env` defaults —
+for **onctionenergy.com** (ports there already match the `.env` defaults —
 change both if you edited `MAPPING_API_PORT` / `MAPPING_WEB_PORT`),
 then:
 
@@ -88,8 +88,8 @@ sudo systemctl reload nginx
 
 ## 5. Verify
 
-- `https://onction.com/mapping/` loads the app
-- `https://onction.com/mapping/api/health` returns `{"ok":true}`
+- `https://onctionenergy.com/mapping/` loads the app
+- `https://onctionenergy.com/mapping/api/health` returns `{"ok":true}`
 - Route & Loss Calculator returns a result with the route line drawn
 
 ## Redeploying after a code change

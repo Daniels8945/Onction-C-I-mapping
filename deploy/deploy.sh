@@ -13,7 +13,7 @@ MAPPING_CORS_ORIGIN=*
 MAPPING_API_PORT=4001
 MAPPING_WEB_PORT=4080
 EOF
-  echo "Wrote .env — edit MAPPING_CORS_ORIGIN to https://onction.com once it's live."
+  echo "Wrote .env — edit MAPPING_CORS_ORIGIN to https://onctionenergy.com/ once it's live."
 fi
 
 docker compose build

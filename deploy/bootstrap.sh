@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # One-time setup. Run as root (or via sudo) on the VPS.
 # Creates a dedicated Linux user for this app (the "mapping" product at
-# onction.com/mapping — distinct from the main Onction platform already
+# onctionenergy.com/mapping — distinct from the main Onction platform already
 # on this box) and puts it in the docker group so it can run
 # `docker compose` without touching the other app or needing root for
 # day-to-day deploys.
