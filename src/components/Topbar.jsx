@@ -1,89 +1,80 @@
-// components/Topbar.jsx
-import ToolButton from "./ui/ToolButton";
+import { AnimatePresence, motion } from "motion/react";
+import { Lightning, MagnifyingGlass, DownloadSimple, Moon, Sun } from "@phosphor-icons/react";
+import { Button } from "@/components/ui/button";
+import { Separator } from "@/components/ui/separator";
+import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
+import HelpDialog from "@/components/HelpDialog";
 
-const KPI = ({ value, label }) => (
-  <div className="text-right flex-shrink-0">
-    <div className="text-[15px] font-bold text-accent leading-none">{value}</div>
-    <div className="text-[8px] text-slate tracking-[0.12em] uppercase mt-0.5">{label}</div>
-  </div>
-);
-
-function ThemeToggle({ isDark, onToggle }) {
+function KPI({ value, label }) {
   return (
-    <button
-      onClick={onToggle}
-      title={isDark ? "Switch to light mode" : "Switch to dark mode"}
-      className="h-[30px] w-[30px] flex items-center justify-center rounded-[5px]
-        border border-rim text-slate hover:border-accent hover:text-accent
-        transition-all duration-150 cursor-pointer flex-shrink-0 text-[14px]"
-    >
-      {isDark ? "☀" : "☾"}
-    </button>
+    <div className="flex flex-col items-center px-3">
+      <span className="text-sm font-mono font-bold text-primary leading-none tabular-nums">{value}</span>
+      <span className="text-[9px] text-muted-foreground uppercase tracking-wider mt-0.5">{label}</span>
+    </div>
   );
 }
 
 export default function Topbar({
-  mode, onModeChange,
-  onNearestGenco, onClear, onExport,
-  visibleCount, pinCount, ciCount,
-  isDark, onThemeToggle,
+  mode, onModeChange, onNearestGenco, onClear, onExport,
+  visibleCount, pinCount, ciCount, isDark, onThemeToggle,
 }) {
   return (
-    <header className="h-[52px] bg-panel border-b border-rim flex items-center
-      px-4 gap-3 flex-shrink-0 z-50 overflow-x-auto">
-
+    <div className="flex items-center gap-1 px-3 h-12 border-b border-border bg-card flex-shrink-0 z-20">
       {/* Brand */}
-      <div className="flex items-center gap-2.5 flex-shrink-0">
-        <div
-          className="w-7 h-7 flex-shrink-0"
-          style={{
-            background: "conic-gradient(from 0deg, #f5a623, #ff6b00, #f5a623)",
-            clipPath: "polygon(50% 0%,100% 25%,100% 75%,50% 100%,0% 75%,0% 25%)",
-            animation: "spin 8s linear infinite",
-          }}
-        />
-        <span className="font-display text-[14px] font-extrabold tracking-[0.06em] uppercase whitespace-nowrap">
-          C&amp;I <span className="text-accent">GIS</span>
-        </span>
+      <div className="flex items-center gap-2 mr-3">
+        <div className="w-6 h-6 rounded bg-primary flex items-center justify-center text-primary-foreground">
+          <Lightning className="h-3.5 w-3.5" fill="currentColor" />
+        </div>
+        <div className="hidden sm:block">
+          <p className="text-xs font-bold text-foreground leading-none">Nigeria C&amp;I GIS</p>
+          <p className="text-[9px] text-muted-foreground leading-none mt-0.5">Power Intelligence Platform</p>
+        </div>
       </div>
 
-      <div className="w-px h-7 bg-rim flex-shrink-0" />
+      <Separator orientation="vertical" className="h-6" />
 
-      {/* Mode tools */}
-      <div className="flex gap-1">
-        <ToolButton active={mode === "explore"} onClick={() => onModeChange("explore")}>
-          <span className="w-[7px] h-[7px] rounded-full bg-current" />
-          Explore
-        </ToolButton>
-        <ToolButton active={mode === "buffer"} onClick={() => onModeChange("buffer")}>
-          ◎ Buffer
-        </ToolButton>
-        <ToolButton active={mode === "measure"} onClick={() => onModeChange("measure")}>
-          ↔ Measure
-        </ToolButton>
-        <ToolButton onClick={onNearestGenco}>
-          ⚡ Nearest GenCo
-        </ToolButton>
+      {/* KPIs */}
+      <div className="hidden md:flex items-center">
+        <KPI value={String(ciCount)}      label="C&I Sites" />
+        <Separator orientation="vertical" className="h-5" />
+        <KPI value={String(visibleCount)} label="Visible" />
+        <Separator orientation="vertical" className="h-5" />
+        <KPI value={String(pinCount)}     label="Pins" />
       </div>
 
-      <div className="w-px h-7 bg-rim flex-shrink-0" />
+      <Separator orientation="vertical" className="h-6" />
 
-      {/* Utility tools */}
-      <div className="flex gap-1">
-        <ToolButton onClick={onClear}>✕ Clear</ToolButton>
-        <ToolButton onClick={onExport}>↓ Export GeoJSON</ToolButton>
+      {/* Tools */}
+      <div className="flex items-center gap-1.5 ml-auto">
+        <Button variant={mode === "explore" ? "default" : "secondary"} size="sm" onClick={() => onModeChange("explore")}>
+          <MagnifyingGlass className="h-3.5 w-3.5" /> Explore
+        </Button>
+        <Button variant="secondary" size="sm" onClick={onExport}>
+          <DownloadSimple className="h-3.5 w-3.5" /> Export
+        </Button>
       </div>
 
-      {/* Right side: KPIs + theme toggle */}
-      <div className="ml-auto flex gap-4 items-center">
-        <KPI value={String(ciCount)}  label="C&I Sites" />
-        <KPI value={String(pinCount)} label="Pins" />
-        <KPI value={String(visibleCount)} label="On Map" />
+      <HelpDialog />
 
-        <div className="w-px h-7 bg-rim flex-shrink-0" />
-        <ThemeToggle isDark={isDark} onToggle={onThemeToggle} />
-      </div>
-    </header>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button variant="outline" size="icon" onClick={onThemeToggle} aria-label="Toggle theme" className="ml-1 overflow-hidden">
+            <AnimatePresence mode="wait" initial={false}>
+              <motion.span
+                key={isDark ? "sun" : "moon"}
+                initial={{ rotate: -90, opacity: 0 }}
+                animate={{ rotate: 0, opacity: 1 }}
+                exit={{ rotate: 90, opacity: 0 }}
+                transition={{ duration: 0.18 }}
+                className="flex items-center justify-center"
+              >
+                {isDark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+              </motion.span>
+            </AnimatePresence>
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent>Toggle theme</TooltipContent>
+      </Tooltip>
+    </div>
   );
 }
-

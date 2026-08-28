@@ -1,11 +1,20 @@
-// components/ui/SectionTitle.jsx
-export default function SectionTitle({ children }) {
+import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
+import { Info } from "@phosphor-icons/react";
+
+export default function SectionTitle({ children, hint }) {
   return (
-    <div className="flex items-center gap-2 mx-3 mt-3.5 mb-2">
-      <span className="text-[9px] font-semibold tracking-[0.16em] uppercase text-slate whitespace-nowrap">
-        {children}
-      </span>
-      <div className="flex-1 h-px bg-rim" />
+    <div className="flex items-center gap-1 px-3 pt-4 pb-1.5">
+      <p className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground">{children}</p>
+      {hint && (
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button type="button" className="text-muted-foreground/60 hover:text-muted-foreground">
+              <Info className="h-3 w-3" />
+            </button>
+          </TooltipTrigger>
+          <TooltipContent className="max-w-[220px] normal-case tracking-normal font-normal">{hint}</TooltipContent>
+        </Tooltip>
+      )}
     </div>
   );
 }

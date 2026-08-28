@@ -1,22 +1,31 @@
-// components/ui/LayerRow.jsx
-import Toggle from "./Toggle";
+import { motion } from "motion/react";
+import { Switch } from "@/components/ui/switch";
+import { Badge } from "@/components/ui/badge";
+import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
 
-export default function LayerRow({ colorDot, label, badge, on, onClick }) {
-  return (
-    <div
+export default function LayerRow({ colorDot, label, badge, on, onClick, hint }) {
+  const row = (
+    <motion.div
+      role="button"
+      tabIndex={0}
+      whileTap={{ scale: 0.98 }}
       onClick={onClick}
-      className="flex items-center gap-2 px-2 py-[7px] rounded-md cursor-pointer
-        hover:bg-elevated transition-colors duration-100 mb-[2px] select-none"
+      onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && onClick()}
+      className="flex w-full items-center gap-2.5 px-3 py-1.5 cursor-pointer transition-colors hover:bg-accent/60"
     >
-      <div
-        className="w-2 h-2 rounded-[2px] flex-shrink-0"
-        style={{ background: colorDot }}
-      />
-      <span className="text-[11px] text-light flex-1">{label}</span>
-      <span className="text-[9px] text-slate bg-surface border border-rim rounded-[3px] px-1 py-px">
-        {badge}
-      </span>
-      <Toggle on={on} />
-    </div>
+      <span className="h-2 w-2 rounded-full flex-shrink-0" style={{ background: colorDot }} />
+      <span className="flex-1 text-xs text-foreground/90 truncate">{label}</span>
+      {badge != null && <Badge variant="outline">{badge}</Badge>}
+      <Switch checked={on} onCheckedChange={() => {}} />
+    </motion.div>
+  );
+
+  if (!hint) return row;
+
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>{row}</TooltipTrigger>
+      <TooltipContent side="right" className="max-w-[220px] font-normal">{hint}</TooltipContent>
+    </Tooltip>
   );
 }

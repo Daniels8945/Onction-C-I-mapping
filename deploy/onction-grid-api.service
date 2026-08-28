@@ -1,0 +1,19 @@
+[Unit]
+Description=Onction Grid Atlas API
+After=network.target
+
+[Service]
+Type=simple
+User=onction
+Group=onction
+WorkingDirectory=/home/onction/app/server
+EnvironmentFile=/home/onction/app/server/.env
+ExecStart=/usr/bin/node src/index.js
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+ProtectSystem=full
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

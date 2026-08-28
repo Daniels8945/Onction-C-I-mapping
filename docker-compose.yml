@@ -1,0 +1,22 @@
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: onction-grid-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: onction_grid
+      POSTGRES_USER: onction
+      POSTGRES_PASSWORD: ${ONCTION_DB_PASSWORD:-onction_dev}
+    ports:
+      - "${ONCTION_DB_PORT:-5432}:5432"
+    volumes:
+      - onction_grid_data:/var/lib/postgresql/data
+      - ./server/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U onction -d onction_grid"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  onction_grid_data:

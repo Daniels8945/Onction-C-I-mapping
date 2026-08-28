@@ -1,27 +1,49 @@
-/* index.css */
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
-/* ── Google Fonts ────────────────────────────────────────── */
-@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;600;700&family=Syne:wght@400;700;800&display=swap');
-
-/* ── Theme tokens: Dark (default) ───────────────────────── */
+/* ── shadcn/ui design tokens ─────────────────────────────────────────────
+   Custom "refined technical console" theme — not the stock shadcn palette.
+   Dark is the primary, designed-for surface; light is a proper complement,
+   not an afterthought. Brand amber (#f5a623) stays the one warm accent in
+   an otherwise cool, desaturated chrome — deliberate, so it keeps meaning
+   "action / attention" instead of competing with data-layer colors.
+   ────────────────────────────────────────────────────────────────────── */
 :root {
-  --color-surface:  #080b0f;
-  --color-panel:    #0d1117;
-  --color-elevated: #111820;
-  --color-rim:      #1c2535;
-  --color-rim2:     #243040;
-  --color-light:    #d8dde8;
-  --color-slate:    #8090a8;
-  --map-bg:         #05080c;
-  --popup-bg:       #0d1117;
-  --popup-border:   #243040;
-}
+  --background: 220 20% 97%;
+  --foreground: 222 47% 11%;
 
-/* ── Theme tokens: Light ─────────────────────────────────── */
-html.light {
+  --card: 0 0% 100%;
+  --card-foreground: 222 47% 11%;
+  --popover: 0 0% 100%;
+  --popover-foreground: 222 47% 11%;
+
+  --primary: 38 92% 55%;
+  --primary-foreground: 20 45% 9%;
+
+  --secondary: 220 20% 93%;
+  --secondary-foreground: 222 47% 11%;
+
+  --muted: 220 20% 93%;
+  --muted-foreground: 222 15% 40%;
+
+  --accent: 220 20% 91%;
+  --accent-foreground: 222 47% 11%;
+
+  --destructive: 6 74% 51%;
+  --destructive-foreground: 0 0% 100%;
+
+  --border: 220 18% 87%;
+  --input: 220 18% 87%;
+  --ring: 38 92% 45%;
+  --radius: 0.5rem;
+
+  --data-genco: 158 84% 39%;
+  --data-disco: 199 89% 61%;
+  --data-offtaker: 330 81% 71%;
+  --data-route: 38 92% 55%;
+
+  /* legacy tokens — consumed by MapLibre popup HTML (plain DOM strings, not React) */
   --color-surface:  #f0f2f5;
   --color-panel:    #ffffff;
   --color-elevated: #f8f9fb;
@@ -29,12 +51,60 @@ html.light {
   --color-rim2:     #c8cdd8;
   --color-light:    #1a202c;
   --color-slate:    #5a6478;
-  --map-bg:         #e8ecf0;
   --popup-bg:       #ffffff;
   --popup-border:   #c8cdd8;
 }
 
-/* ── MapLibre GL overrides ───────────────────────────────── */
+.dark {
+  --background: 222 47% 6%;
+  --foreground: 213 27% 88%;
+
+  --card: 222 41% 9%;
+  --card-foreground: 213 27% 88%;
+  --popover: 222 41% 9%;
+  --popover-foreground: 213 27% 88%;
+
+  --primary: 38 92% 55%;
+  --primary-foreground: 20 45% 9%;
+
+  --secondary: 222 30% 14%;
+  --secondary-foreground: 213 27% 88%;
+
+  --muted: 222 30% 12%;
+  --muted-foreground: 215 16% 57%;
+
+  --accent: 222 30% 16%;
+  --accent-foreground: 213 27% 92%;
+
+  --destructive: 6 74% 61%;
+  --destructive-foreground: 0 0% 100%;
+
+  --border: 222 25% 18%;
+  --input: 222 25% 18%;
+  --ring: 38 92% 55%;
+
+  --data-genco: 158 84% 45%;
+  --data-disco: 199 89% 65%;
+  --data-offtaker: 330 81% 74%;
+  --data-route: 38 92% 55%;
+
+  --color-surface:  #080b0f;
+  --color-panel:    #0d1117;
+  --color-elevated: #111820;
+  --color-rim:      #1c2535;
+  --color-rim2:     #243040;
+  --color-light:    #d8dde8;
+  --color-slate:    #8090a8;
+  --popup-bg:       #0d1117;
+  --popup-border:   #243040;
+}
+
+@layer base {
+  * { @apply border-border; }
+  body { @apply bg-background text-foreground font-sans; }
+}
+
+/* ── MapLibre controls ───────────────────────────────────── */
 .maplibregl-ctrl-group {
   background: var(--color-panel) !important;
   border: 1px solid var(--color-rim) !important;
@@ -45,8 +115,8 @@ html.light {
   background: var(--color-panel) !important;
   border-bottom: 1px solid var(--color-rim) !important;
 }
-html.light .maplibregl-ctrl-group button span { filter: none; opacity: 0.7; }
-html:not(.light) .maplibregl-ctrl-group button span { filter: invert(1); opacity: 0.6; }
+html:not(.dark) .maplibregl-ctrl-group button span { filter: none; opacity: 0.6; }
+html.dark .maplibregl-ctrl-group button span { filter: invert(1); opacity: 0.6; }
 .maplibregl-ctrl-group button:hover span { opacity: 1 !important; }
 .maplibregl-ctrl-attrib {
   font-size: 9px !important;
@@ -61,39 +131,32 @@ html:not(.light) .maplibregl-ctrl-group button span { filter: invert(1); opacity
   background: color-mix(in srgb, var(--color-surface) 70%, transparent) !important;
 }
 
-/* ── Popup styles ────────────────────────────────────────── */
+/* ── Popups ──────────────────────────────────────────────── */
 .maplibregl-popup-content {
   background: var(--popup-bg) !important;
   border: 1px solid var(--popup-border) !important;
   border-radius: 8px !important;
   padding: 0 !important;
   min-width: 190px;
-  box-shadow: 0 8px 40px rgba(0, 0, 0, 0.25) !important;
+  box-shadow: 0 8px 40px rgba(0,0,0,0.15) !important;
 }
-.maplibregl-popup-tip  { border-top-color: var(--popup-border) !important; }
-.maplibregl-popup-close-button {
-  color: var(--color-slate);
-  font-size: 18px;
-  padding-right: 8px;
-  padding-top: 4px;
+.maplibregl-popup-tip {
+  border-top-color: var(--popup-border) !important;
+  border-bottom-color: var(--popup-border) !important;
 }
+.maplibregl-popup-close-button { color: var(--color-slate); font-size: 18px; padding-right: 8px; padding-top: 4px; }
 .maplibregl-popup-close-button:hover { color: var(--color-light); }
 
-/* Popup inner content */
-.nga-popup       { padding: 12px 14px; font-family: 'JetBrains Mono', monospace; }
-.nga-popup-title { font-family: 'Syne', sans-serif; font-size: 13px; font-weight: 700;
-                   color: #f5a623; margin-bottom: 2px; }
-.nga-popup-sub   { font-size: 8px; letter-spacing: 0.14em; text-transform: uppercase;
-                   color: var(--color-slate); margin-bottom: 8px; }
-.nga-popup-row   { display: flex; justify-content: space-between; font-size: 10px;
-                   padding: 4px 0; border-top: 1px solid var(--color-rim); gap: 10px; }
-.nga-popup-key   { color: var(--color-slate); }
-.nga-popup-val   { color: var(--color-light); }
+.nga-popup       { padding: 12px 14px; font-family: 'Roboto', sans-serif; }
+.nga-popup-title { font-family: 'Roboto', sans-serif; font-size: 13px; font-weight: 700; color: #f5a623; margin-bottom: 2px; }
+.nga-popup-sub   { font-size: 8px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--color-slate); margin-bottom: 8px; }
+.nga-popup-row   { display: flex; justify-content: space-between; font-size: 10px; padding: 4px 0; border-top: 1px solid var(--color-rim); gap: 10px; }
+.nga-popup-key   { color: var(--color-slate); flex-shrink: 0; }
+.nga-popup-val   { color: var(--color-light); text-align: right; }
 
-/* ── Spinning logo ───────────────────────────────────────── */
-@keyframes spin { to { transform: rotate(360deg); } }
-
-/* ── Custom scrollbar ────────────────────────────────────── */
+/* ── Scrollbar ───────────────────────────────────────────── */
 .scrollbar-thin::-webkit-scrollbar       { width: 3px; }
 .scrollbar-thin::-webkit-scrollbar-track { background: transparent; }
 .scrollbar-thin::-webkit-scrollbar-thumb { background: var(--color-rim2); border-radius: 2px; }
+
+@keyframes spin { to { transform: rotate(360deg); } }
