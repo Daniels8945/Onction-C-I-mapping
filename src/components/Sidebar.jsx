@@ -7,7 +7,8 @@ import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import { Card, CardContent } from "@/components/ui/card";
-import { CI_CUSTOMERS, GENCOS, TRADERS, DISCOS } from "../data";
+import { CI_CUSTOMERS, GENCOS, TRADERS, DISCOS, TCN_LOOPS } from "../data";
+import { TX_LINE_STATUS, SUBSTATION_STATUS } from "../data/legend";
 
 export default function Sidebar({
   layerVis, toggleLayer,
@@ -20,6 +21,16 @@ export default function Sidebar({
 }) {
   return (
     <>
+      {/* Below `sm`, the sidebar is a full overlay instead of pushing the map —
+          this backdrop closes it on tap-outside, same as any mobile drawer. */}
+      {!isCollapsed && (
+        <div
+          className="absolute inset-0 bg-black/50 z-30 sm:hidden"
+          onClick={onToggleCollapse}
+          aria-hidden="true"
+        />
+      )}
+
       {/* Collapse toggle tab — always visible */}
       <Button
         variant="secondary"
@@ -27,24 +38,27 @@ export default function Sidebar({
         onClick={onToggleCollapse}
         title={isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
         className={`
-          absolute top-1/2 -translate-y-1/2 z-30
+          absolute top-1/2 -translate-y-1/2 z-50
           h-14 w-5 rounded-l-none rounded-r-md border-l-0 shadow-md
           transition-all duration-300
-          ${isCollapsed ? "left-0" : "left-[260px]"}
+          ${isCollapsed ? "left-0" : "left-[min(80vw,280px)] sm:left-[260px]"}
         `}
       >
         {isCollapsed ? <CaretRight className="h-3.5 w-3.5" /> : <CaretLeft className="h-3.5 w-3.5" />}
       </Button>
 
-      {/* Sidebar panel */}
+      {/* Sidebar panel — a sliding overlay below `sm`, a width-toggling flex
+          item (pushes the map) at `sm` and up. */}
       <div
         className={`
-          relative flex flex-col bg-card border-r border-border
-          overflow-hidden flex-shrink-0 transition-all duration-300
-          ${isCollapsed ? "w-0" : "w-[260px]"}
+          absolute sm:relative inset-y-0 left-0 z-40
+          flex flex-col bg-card border-r border-border
+          flex-shrink-0 w-[min(80vw,280px)]
+          transition-transform sm:transition-[width] duration-300
+          ${isCollapsed ? "-translate-x-full sm:translate-x-0 sm:w-0" : "translate-x-0 sm:w-[260px]"}
         `}
       >
-        <ScrollArea className="w-[260px] h-full">
+        <ScrollArea className="w-full h-full">
           <div className="flex flex-col pb-4">
 
             {/* C&I Layer */}
@@ -61,15 +75,15 @@ export default function Sidebar({
               Reference Layers
             </SectionTitle>
             <LayerRow
-              colorDot="#f5a623" label="DISCO HQs" badge={DISCOS.length} on={layerVis.discos} onClick={() => toggleLayer("discos")}
-              hint="Headquarters of Nigeria's 12 licensed Distribution Companies — the utilities that deliver power to homes and businesses in their territory."
+              colorDot="#e05252" label="DISCO HQs" badge={DISCOS.length} on={layerVis.discos} onClick={() => toggleLayer("discos")}
+              hint="Headquarters of Nigeria's 12 licensed Distribution Companies — the utilities that deliver power to homes and businesses in their territory. Each DISCO has its own marker color on the map."
             />
             <LayerRow
-              colorDot="#00e5a0" label="GenCo / NIPP / IPP" badge={GENCOS.length} on={layerVis.gencos} onClick={() => toggleLayer("gencos")}
-              hint="Power plants: GenCo (privatized former state generator), NIPP (government-built National Integrated Power Project plant), or IPP (privately owned Independent Power Producer)."
+              colorDot="#22d3ee" label="GenCo / NIPP / IPP" badge={GENCOS.length} on={layerVis.gencos} onClick={() => toggleLayer("gencos")}
+              hint="Power plants: GenCo (privatized former state generator, cyan — same color as IPP), NIPP (government-built National Integrated Power Project plant, orange), or IPP (privately owned Independent Power Producer). Hydro plants of any type show green, solar shows yellow. Plants marked ongoing/proposed on TCN's own map (Zungeru, Kashimbila, Kazaure PV) render faded — they're not operational yet."
             />
             <LayerRow
-              colorDot="#f5a623" label="Electricity Traders" badge={TRADERS.length} on={layerVis.traders} onClick={() => toggleLayer("traders")}
+              colorDot="#facc15" label="Electricity Traders" badge={TRADERS.length} on={layerVis.traders} onClick={() => toggleLayer("traders")}
               hint="NERC-licensed bulk electricity trading companies that buy from generators and resell to DisCos or eligible customers."
             />
 
@@ -85,14 +99,36 @@ export default function Sidebar({
               <span className="text-[hsl(var(--data-offtaker))] font-semibold">Offtaker</span> marker to load it straight into the calculator below —
               or pick both manually and hit <span className="text-foreground font-semibold">Route</span>.
             </div>
-            <LayerRow
-              colorDot="hsl(215 20% 55%)" label="TCN Substations" badge={null} on={layerVis.gridSubstations} onClick={() => toggleLayer("gridSubstations")}
-              hint="The physical 330kV/132kV nodes of the national grid, operated by TCN (Transmission Company of Nigeria)."
-            />
-            <LayerRow
-              colorDot="hsl(215 20% 40%)" label="Grid Corridors" badge={null} on={layerVis.gridEdges} onClick={() => toggleLayer("gridEdges")}
-              hint="The transmission line segments connecting substations — the physical wires power travels along."
-            />
+            {/* Substations — one toggle per status (existing/on-going/proposed)
+                instead of one combined "TCN Substations" switch, so e.g. the
+                proposed bulk S/S can be shown on their own. */}
+            {SUBSTATION_STATUS.filter(s => s.key !== "ongoing-nipp").map(s => (
+              <LayerRow
+                key={s.key}
+                colorDot={s.outer} label={s.label} badge={null} on={layerVis[`gridSub_${s.key}`]} onClick={() => toggleLayer(`gridSub_${s.key}`)}
+                hint={`TCN 330/132kV bulk substations marked "${s.key}" on their own network map. Outer ring ${s.outer}, inner ring ${s.inner}.`}
+              />
+            ))}
+            {/* Transmission lines — one toggle per status, same reasoning. */}
+            {TX_LINE_STATUS.map(s => (
+              <LayerRow
+                key={s.key}
+                colorDot={s.color} label={s.label} badge={null} on={layerVis[`gridEdges_${s.key}`]} onClick={() => toggleLayer(`gridEdges_${s.key}`)}
+                hint={s.key === "existing"
+                  ? "The transmission line segments connecting substations — the physical wires power travels along. This app's routing only ever uses these."
+                  : `Corridors marked "${s.key}" on TCN's own network map — reference only, never used for routing.`}
+              />
+            ))}
+            {/* TCN's own named 330kV loops — one toggle per loop (not one
+                combined switch) so each can be shown/hidden independently. */}
+            {TCN_LOOPS.map((loop, i) => (
+              <LayerRow
+                key={loop.id}
+                colorDot={loop.color} label={`Loop ${i + 1}${loop.status === "ongoing" ? " (ongoing)" : ""}`}
+                badge={null} on={layerVis[`tcnLoop_${loop.id}`]} onClick={() => toggleLayer(`tcnLoop_${loop.id}`)}
+                hint={`${loop.name}${loop.status === "ongoing" ? " — ongoing, shown dashed (not yet built)" : " — existing"}`}
+              />
+            ))}
             <LayerRow
               colorDot="hsl(var(--data-genco))" label="GenCo Engagements" badge={gridParties.gencos.length} on={layerVis.gridGencos} onClick={() => toggleLayer("gridGencos")}
               hint="Onction's live commercial deals with generators, sourced from executed and draft PPAs."

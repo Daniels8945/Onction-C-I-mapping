@@ -6,3 +6,8 @@ server/.env
 *.log
 .DS_Store
 .claude/
+osrm-data/
+qgis-source/
+
+
+# NIGERIAN MAP SHOWING FIVE EXISTING AND ONE ON-GOING TRANSMISSION LINE LOOPS.pdf

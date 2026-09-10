@@ -1,30 +1,57 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import maplibregl from "maplibre-gl";
-import { DISCOS, GENCOS, TRADERS, TRANSMISSION, CI_CUSTOMERS, getZoneForState } from "../data";
+import { DISCOS, GENCOS, TRADERS, TRANSMISSION, CI_CUSTOMERS, TCN_LOOPS, getZoneForState } from "../data";
+import { TX_LINE_STATUS, SUBSTATION_STATUS, GENCO_ICONS } from "../data/legend";
+import * as turf from "@turf/turf";
 import { computeBuffer, measureDistance, findNearestGenco } from "../utils/analysis";
 import { gridApi } from "../lib/gridApi";
 
 const C = {
   accent: "#f5a623", green: "#00e5a0", red: "#e05252",
   purple: "#7c6af8", cyan: "#22d3ee", orange: "#fb923c",
+  // Traders got their own hue — they used to share `accent` with the route
+  // line color, which made a static reference layer look like an active route.
+  yellow: "#facc15",
 };
+
+// Each of TCN's 6 named loops gets its own toggle key/layer (tcnLoop_loop1 …
+// tcnLoop_loop6) instead of one shared "gridTcnLoops" switch, so they can be
+// turned on/off independently from the sidebar.
+const TCN_LOOP_LAYER_GROUPS = Object.fromEntries(TCN_LOOPS.map(l => [`tcnLoop_${l.id}`, [`tcn-loop-${l.id}`]]));
+const TCN_LOOP_INIT_VIS     = Object.fromEntries(TCN_LOOPS.map(l => [`tcnLoop_${l.id}`, false]));
+
+// Same idea for transmission-line and substation status — each status (not
+// just each loop) gets its own toggle/layer, so "Proposed 330kV Transmission
+// Lines" can be shown on its own instead of bundled with existing/ongoing
+// under one "Grid Corridors" switch. "ongoing-nipp" substations have no data
+// yet, so no toggle is generated for it — nothing to show.
+const EDGE_STATUS_LAYER_GROUPS = Object.fromEntries(TX_LINE_STATUS.map(s => [`gridEdges_${s.key}`, [`grid-edge-${s.key}`]]));
+const EDGE_STATUS_INIT_VIS     = Object.fromEntries(TX_LINE_STATUS.map(s => [`gridEdges_${s.key}`, false]));
+const SUB_STATUS_KEYS = SUBSTATION_STATUS.filter(s => s.key !== "ongoing-nipp").map(s => s.key);
+const SUB_STATUS_LAYER_GROUPS = Object.fromEntries(SUB_STATUS_KEYS.map(k => [`gridSub_${k}`, [`grid-sub-ring-outer-${k}`, `grid-sub-ring-inner-${k}`, `grid-sub-labels-${k}`]]));
+const SUB_STATUS_INIT_VIS     = Object.fromEntries(SUB_STATUS_KEYS.map(k => [`gridSub_${k}`, false]));
 
 export const LAYER_GROUPS = {
   ci:           ["ci-circle", "ci-glow", "ci-labels"],
   // states: ["states-fill", "states-outline", "states-hover", "states-labels"],  // commented out
   // zones:  ["states-zone-fill"],  // commented out — not shown in UI
   discos:       ["discos-circle", "discos-glow", "discos-labels"],
-  gencos:       ["gencos-circle", "gencos-glow", "gencos-labels"],
+  gencos:       ["gencos-marker", "gencos-glow", "gencos-labels"],
   traders:      ["traders-circle", "traders-glow", "traders-labels"],
   transmission: ["transmission-lines", "transmission-glow"],
   buffers:      ["buffers-fill", "buffers-outline"],
   // ── Onction Grid Atlas (live from Postgres API) ──────────────────────
-  gridSubstations: ["grid-sub-circle", "grid-sub-labels"],
-  gridEdges:       ["grid-edge-lines"],
+  // Substations and transmission lines are split one toggle per status
+  // (existing/ongoing/proposed) instead of one combined switch — see
+  // SUB_STATUS_LAYER_GROUPS / EDGE_STATUS_LAYER_GROUPS below.
+  ...SUB_STATUS_LAYER_GROUPS,
+  ...EDGE_STATUS_LAYER_GROUPS,
   gridGencos:      ["grid-genco-circle", "grid-genco-glow", "grid-genco-labels"],
   gridDiscos:      ["grid-disco-circle", "grid-disco-labels"],
   gridOfftakers:   ["grid-offtaker-circle", "grid-offtaker-glow", "grid-offtaker-labels"],
   gridRoute:       ["grid-route-trunk", "grid-route-lastmile", "grid-route-hops", "grid-route-dest"],
+  // TCN's own named 330kV loops, overlaid as a distinct reference layer — see TCN_LOOPS.
+  ...TCN_LOOP_LAYER_GROUPS,
 };
 
 const INIT_VIS = {
@@ -35,8 +62,11 @@ const INIT_VIS = {
   // GenCos + Offtakers ON by default — the sidebar's own hint text already tells
   // users to click these markers (nearest-offtaker/GenCo lookup, route calculator),
   // so they can't be opt-in only. Substations/edges/DisCos stay opt-in (dense, map-only).
-  gridSubstations: false, gridEdges: false, gridGencos: true, gridDiscos: false, gridOfftakers: true,
+  gridGencos: true, gridDiscos: false, gridOfftakers: true,
   gridRoute: true, // visibility of this group tracks whether a route is computed, not a manual toggle
+  ...SUB_STATUS_INIT_VIS,
+  ...EDGE_STATUS_INIT_VIS,
+  ...TCN_LOOP_INIT_VIS,
 };
 
 export default function useNigeriaMap({ isDark, BASEMAP } = {}) {
@@ -67,6 +97,8 @@ export default function useNigeriaMap({ isDark, BASEMAP } = {}) {
   const gridRouteTableRef = useRef([]); // the precomputed 182-row genco x destination table (/api/routes)
   const gridAtlasDataRef = useRef(null); // raw fetch response, cached so theme swaps don't re-hit the API
   const lastGridRouteRef = useRef(null); // { result, destCoords } — redrawn after each theme swap
+  const gridLoopFeaturesRef = useRef([]); // last _buildLoopCurves() output (one feature per loop), indexed to match generateId — lets click handlers dim/undim by feature id
+  const hoverPopupRef = useRef(null); // one shared no-close-button popup, reused across every hover-label binding below
   const listenersBoundRef = useRef(false); // click/hover handlers are delegated and must be bound only once
   const [gridStatus,   setGridStatus]   = useState("idle"); // idle | loading | ready | error
   const [gridError,    setGridError]    = useState(null);
@@ -266,24 +298,84 @@ export default function useNigeriaMap({ isDark, BASEMAP } = {}) {
     map.on("mouseleave", "discos-circle", () => { map.getCanvas().style.cursor = ""; });
   }
 
+  // Which generation-station icon a GenCo/NIPP/IPP entry gets — shape AND
+  // color both carry meaning here, copied directly off TCN's own legend
+  // (pentagon = proposed solar, triangle = hydro, square = thermal; color
+  // then distinguishes existing/ongoing/NIPP/IPP within that shape).
+  function _gencoIconKey(g) {
+    if (g.type === "Solar") return "gc-solar-proposed";
+    if (g.type === "Hydro") return g.status === "ongoing" ? "gc-hydro-ongoing" : "gc-hydro-existing";
+    if (g.subtype === "NIPP") return "gc-thermal-nipp";
+    if (g.subtype === "IPP")  return "gc-thermal-ipp";
+    return "gc-thermal-existing";
+  }
+
+  // Draws the 6 legend icons onto small canvases and registers them as map
+  // images. Re-run on every _addGencoLayer call (guarded by hasImage) since
+  // map.setStyle() wipes custom images along with sources/layers on every
+  // theme swap, same reason every other _add*Layer function is re-callable.
+  function _makeGencoIcons(map) {
+    const SIZE = 28, RATIO = 3;
+    GENCO_ICONS.forEach(({ key: id, shape, color }) => {
+      if (map.hasImage(id)) return;
+      const canvas = document.createElement("canvas");
+      canvas.width = SIZE * RATIO; canvas.height = SIZE * RATIO;
+      const ctx = canvas.getContext("2d");
+      ctx.scale(RATIO, RATIO);
+      const cx = SIZE / 2, cy = SIZE / 2, r = SIZE / 2 - 3;
+      ctx.beginPath();
+      if (shape === "square") {
+        const s = r * 1.15;
+        ctx.rect(cx - s / 2, cy - s / 2, s, s);
+      } else if (shape === "triangle") {
+        ctx.moveTo(cx, cy - r);
+        ctx.lineTo(cx + r * 0.87, cy + r * 0.55);
+        ctx.lineTo(cx - r * 0.87, cy + r * 0.55);
+        ctx.closePath();
+      } else { // pentagon
+        for (let i = 0; i < 5; i++) {
+          const a = -Math.PI / 2 + i * (2 * Math.PI / 5);
+          const x = cx + r * Math.cos(a), y = cy + r * Math.sin(a);
+          i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+        }
+        ctx.closePath();
+      }
+      ctx.fillStyle = color + "33"; // faint fill so the shape reads against a busy basemap
+      ctx.fill();
+      ctx.lineJoin = "round";
+      ctx.strokeStyle = "#ffffff"; ctx.lineWidth = 2.6; ctx.stroke(); // white halo pass
+      ctx.strokeStyle = color;     ctx.lineWidth = 1.6; ctx.stroke(); // color pass on top
+      map.addImage(id, ctx.getImageData(0, 0, canvas.width, canvas.height), { pixelRatio: RATIO });
+    });
+  }
+
   function _addGencoLayer(map) {
-    const features = GENCOS.map(g => ({ type: "Feature", id: g.id, properties: { ...g }, geometry: { type: "Point", coordinates: [g.lng, g.lat] } }));
+    const features = GENCOS.map(g => ({ type: "Feature", id: g.id, properties: { ...g, iconKey: _gencoIconKey(g) }, geometry: { type: "Point", coordinates: [g.lng, g.lat] } }));
     map.addSource("gencos-src", { type: "geojson", data: { type: "FeatureCollection", features } });
     const gencoColor = ["case",
+      ["==", ["get", "type"],    "Solar"], C.yellow,
       ["==", ["get", "type"],    "Hydro"], C.green,
       ["==", ["get", "subtype"], "NIPP"],  C.orange,
       ["==", ["get", "subtype"], "IPP"],   C.cyan,
       C.cyan];
-    map.addLayer({ id: "gencos-glow",   type: "circle", source: "gencos-src", paint: { "circle-radius": 18, "circle-color": gencoColor, "circle-opacity": 0.1 } });
-    map.addLayer({ id: "gencos-circle", type: "circle", source: "gencos-src", paint: { "circle-radius": 7,  "circle-color": gencoColor, "circle-opacity": 0.9, "circle-stroke-color": "#fff", "circle-stroke-width": 1 } });
-    map.addLayer({ id: "gencos-labels", type: "symbol", source: "gencos-src", layout: { "text-field": ["concat", ["get", "name"], " [", ["get", "subtype"], "]"], "text-font": ["Noto Sans Regular"], "text-size": 8, "text-offset": [0, 1.4], "text-anchor": "top", "text-allow-overlap": false }, paint: { "text-color": "#334455", "text-halo-color": "#fff", "text-halo-width": 1.5 } });
+    // Plants marked ongoing/proposed on TCN's map (Zungeru, Kashimbila, Kazaure
+    // PV) render at reduced opacity so they read as "not yet operational"
+    // without needing a second layer — same treatment as the substation ring.
+    const gencoOpacity = ["match", ["get", "status"], "ongoing", 0.4, "proposed", 0.4, 0.9];
+    _makeGencoIcons(map);
+    map.addLayer({ id: "gencos-glow",   type: "circle", source: "gencos-src", paint: { "circle-radius": 16, "circle-color": gencoColor, "circle-opacity": 0.1 } });
+    map.addLayer({ id: "gencos-marker", type: "symbol", source: "gencos-src",
+      layout: { "icon-image": ["get", "iconKey"], "icon-size": 0.75, "icon-allow-overlap": true, "icon-ignore-placement": true },
+      paint: { "icon-opacity": gencoOpacity } });
+    map.addLayer({ id: "gencos-labels", type: "symbol", source: "gencos-src", layout: { "text-field": ["concat", ["get", "name"], " [", ["get", "subtype"], "]", ["match", ["get", "status"], "ongoing", " (ongoing)", "proposed", " (proposed)", ""]], "text-font": ["Noto Sans Regular"], "text-size": 8, "text-offset": [0, 1.5], "text-anchor": "top", "text-allow-overlap": false }, paint: { "text-color": "#334455", "text-halo-color": "#fff", "text-halo-width": 1.5 } });
   }
 
   function _bindGencoHandlers(map) {
-    map.on("click", "gencos-circle", e => {
+    map.on("click", "gencos-marker", e => {
       featureHandled.current = true;
       const p = e.features[0].properties; lastClicked.current = e.features[0];
       const rows = [["Type", `${p.type} / ${p.subtype}`]];
+      if (p.status && p.status !== "existing") rows.push(["Status", p.status === "ongoing" ? "Ongoing / committed" : "Proposed"]);
       if (p.capacity) rows.push(["Capacity", `${p.capacity} MW`]);
       if (p.fuel)     rows.push(["Fuel", p.fuel]);
       if (p.owner)    rows.push(["Owner", p.owner]);
@@ -293,8 +385,8 @@ export default function useNigeriaMap({ isDark, BASEMAP } = {}) {
       if (modeRef.current === "buffer") { _handleBufferOnFeature(map, e.lngLat, p); return; }
       _showPopup(map, e.lngLat, p.name, `${p.subtype || p.type}`, rows);
     });
-    map.on("mouseenter", "gencos-circle", () => { map.getCanvas().style.cursor = "pointer"; });
-    map.on("mouseleave", "gencos-circle", () => { map.getCanvas().style.cursor = ""; });
+    map.on("mouseenter", "gencos-marker", () => { map.getCanvas().style.cursor = "pointer"; });
+    map.on("mouseleave", "gencos-marker", () => { map.getCanvas().style.cursor = ""; });
   }
 
   function _addCILayer(map) {
@@ -334,8 +426,8 @@ export default function useNigeriaMap({ isDark, BASEMAP } = {}) {
   function _addTraderLayer(map) {
     const features = TRADERS.map(t => ({ type: "Feature", id: t.id, properties: { ...t }, geometry: { type: "Point", coordinates: [t.lng, t.lat] } }));
     map.addSource("traders-src", { type: "geojson", data: { type: "FeatureCollection", features } });
-    map.addLayer({ id: "traders-glow",   type: "circle", source: "traders-src", paint: { "circle-radius": 18, "circle-color": C.accent, "circle-opacity": 0.12 } });
-    map.addLayer({ id: "traders-circle", type: "circle", source: "traders-src", paint: { "circle-radius": 9, "circle-color": C.accent, "circle-opacity": 0.95, "circle-stroke-color": "#fff", "circle-stroke-width": 2, "circle-stroke-opacity": 0.5 } });
+    map.addLayer({ id: "traders-glow",   type: "circle", source: "traders-src", paint: { "circle-radius": 18, "circle-color": C.yellow, "circle-opacity": 0.12 } });
+    map.addLayer({ id: "traders-circle", type: "circle", source: "traders-src", paint: { "circle-radius": 9, "circle-color": C.yellow, "circle-opacity": 0.95, "circle-stroke-color": "#fff", "circle-stroke-width": 2, "circle-stroke-opacity": 0.5 } });
     map.addLayer({ id: "traders-labels", type: "symbol", source: "traders-src", layout: { "text-field": ["get", "name"], "text-font": ["Noto Sans Bold"], "text-size": 9, "text-offset": [0, 1.6], "text-anchor": "top", "text-allow-overlap": false }, paint: { "text-color": "#334455", "text-halo-color": "#fff", "text-halo-width": 2 } });
   }
 
@@ -361,7 +453,10 @@ export default function useNigeriaMap({ isDark, BASEMAP } = {}) {
   }
 
   // ── Onction Grid Atlas — live data from the Postgres routing API ────────
-  const GRID_C = { sub: "#64748b", edge: "#475569", genco: "#10b981", disco: "#38bdf8", offtaker: "#f472b6", route: "#f5a623" };
+  // sub/edge used to be muted slate-grays that nearly vanished against the dark
+  // "fiord" basemap's own blue-gray tones — bright + a dark stroke on the nodes
+  // so the backbone reads clearly against both the dark and light basemap.
+  const GRID_C = { genco: "#10b981", disco: "#38bdf8", offtaker: "#f472b6", route: "#f5a623" };
 
   // Fetches once and caches in gridAtlasDataRef; safe to call _renderGridAtlas
   // again after every theme swap without hitting the network again.
@@ -382,12 +477,85 @@ export default function useNigeriaMap({ isDark, BASEMAP } = {}) {
       setGridAtccScenarios(atccScenarios);
       _renderGridAtlas(map);
       _bindGridAtlasHandlers(map);
+      // _renderGridAtlas's layers are created after the initial _syncVisToMap
+      // call (this fetch is async), so MapLibre's implicit default
+      // ("visible") would otherwise apply to all of them regardless of the
+      // sidebar's actual toggle state, until the user clicked any toggle —
+      // same fix _addStatesLayer already needed for the same reason.
+      _syncVisToMap(map, layerVisRef.current);
       setGridStatus("ready");
     }).catch(err => {
       console.warn("Onction Grid Atlas API unavailable:", err.message);
       setGridStatus("error");
       setGridError(err.message);
     });
+  }
+
+  // Builds one smooth-curve feature per TCN loop (not a straight polyline
+  // through the raw node coordinates) — TCN's own map draws these loops as
+  // rounded curves, not sharp point-to-point segments, and straight segments
+  // made loop 6 in particular look kinked and mispositioned against the
+  // source. For any corridor two or more loops share (e.g. Jebba-Shiroro
+  // sits in loops 4/5/6), each loop's copy of that hop is first nudged
+  // sideways by a small fixed perpendicular offset (in degrees, so it scales
+  // naturally with zoom) before smoothing, so overlapping corridors still
+  // fan out instead of drawing exactly on top of each other. The loops are
+  // diagrammatic per TCN's own map (not-to-scale), so none of this touches
+  // real substation coordinates, only the drawn curve between them.
+  function _buildLoopCurves(nodeLookup) {
+    const OFFSET_STEP = 0.045; // degrees between adjacent parallel copies
+
+    const sharersByKey = new Map(); // "A|B" (order-independent) -> loop indices, in TCN_LOOPS order
+    const perLoopHops = TCN_LOOPS.map((loop, loopIdx) => {
+      const hops = [];
+      for (let i = 0; i < loop.nodes.length - 1; i++) {
+        const a = loop.nodes[i], b = loop.nodes[i + 1];
+        if (a === b) continue;
+        const key = [a, b].sort().join("|");
+        hops.push({ a, b, key });
+        const sharers = sharersByKey.get(key) || [];
+        if (!sharers.includes(loopIdx)) sharers.push(loopIdx);
+        sharersByKey.set(key, sharers);
+      }
+      return hops;
+    });
+
+    const features = [];
+    TCN_LOOPS.forEach((loop, loopIdx) => {
+      const coords = [];
+      perLoopHops[loopIdx].forEach(({ a, b, key }, hopIdx) => {
+        const na = nodeLookup.get(a), nb = nodeLookup.get(b);
+        if (!na || !nb) return;
+        const sharers = sharersByKey.get(key);
+        const rank = sharers.indexOf(loopIdx);
+        let [lon1, lat1] = [na.lon, na.lat];
+        let [lon2, lat2] = [nb.lon, nb.lat];
+        if (sharers.length > 1) {
+          const dx = lon2 - lon1, dy = lat2 - lat1;
+          const len = Math.hypot(dx, dy) || 1;
+          const px = -dy / len, py = dx / len; // unit vector perpendicular to the hop
+          const offset = (rank - (sharers.length - 1) / 2) * OFFSET_STEP;
+          lon1 += px * offset; lat1 += py * offset;
+          lon2 += px * offset; lat2 += py * offset;
+        }
+        if (hopIdx === 0) coords.push([lon1, lat1]);
+        coords.push([lon2, lat2]);
+      });
+      if (coords.length < 2) return;
+
+      let curveCoords = coords;
+      try {
+        curveCoords = turf.bezierSpline(turf.lineString(coords), { sharpness: 0.85 }).geometry.coordinates;
+      } catch {
+        // degenerate loop (e.g. a repeated point) — fall back to the straight polyline
+      }
+      features.push({
+        type: "Feature",
+        properties: { loopId: loop.id, loopName: loop.name, color: loop.color, status: loop.status },
+        geometry: { type: "LineString", coordinates: curveCoords },
+      });
+    });
+    return features;
   }
 
   // Pure source/layer creation from cached data — no listeners. Callable on
@@ -401,15 +569,24 @@ export default function useNigeriaMap({ isDark, BASEMAP } = {}) {
 
     const subFeatures = substations.map(s => ({ type: "Feature", properties: { ...s }, geometry: { type: "Point", coordinates: [s.lon, s.lat] } }));
     map.addSource("grid-sub-src", { type: "geojson", data: { type: "FeatureCollection", features: subFeatures } });
-    map.addLayer({ id: "grid-sub-circle", type: "circle", source: "grid-sub-src", paint: {
-      "circle-radius": ["case", ["get", "is_injection"], 5, 3.5],
-      "circle-color": GRID_C.sub,
-      "circle-opacity": 0.85,
-      "circle-stroke-color": "#fff", "circle-stroke-width": 1,
-    } });
-    map.addLayer({ id: "grid-sub-labels", type: "symbol", source: "grid-sub-src", minzoom: 7,
-      layout: { "text-field": ["get", "name"], "text-font": ["Noto Sans Regular"], "text-size": 8, "text-offset": [0, 1.2], "text-anchor": "top" },
-      paint: { "text-color": "#334455", "text-halo-color": "#fff", "text-halo-width": 1.4 } });
+    // Double-ring substation marker — outer + inner stroke color pair, copied
+    // directly off TCN's own bulk-S/S legend (each status is a distinct
+    // outer/inner pair, not just one color). One outer/inner/label layer set
+    // per status (not one shared layer) so "Proposed 330/132kV Bulk S/S" can
+    // be toggled independently from "Existing"/"On-going" — see
+    // SUB_STATUS_LAYER_GROUPS. "ongoing-nipp" has no data yet, so no layer.
+    SUBSTATION_STATUS.filter(s => s.key !== "ongoing-nipp").forEach(s => {
+      map.addLayer({ id: `grid-sub-ring-outer-${s.key}`, type: "circle", source: "grid-sub-src",
+        filter: ["==", ["get", "status"], s.key],
+        paint: { "circle-radius": ["case", ["get", "is_injection"], 6, 4.5], "circle-color": "transparent", "circle-stroke-color": s.outer, "circle-stroke-width": 1 } });
+      map.addLayer({ id: `grid-sub-ring-inner-${s.key}`, type: "circle", source: "grid-sub-src",
+        filter: ["==", ["get", "status"], s.key],
+        paint: { "circle-radius": ["case", ["get", "is_injection"], 3.5, 2.5], "circle-color": "transparent", "circle-stroke-color": s.inner, "circle-stroke-width": 1 } });
+      map.addLayer({ id: `grid-sub-labels-${s.key}`, type: "symbol", source: "grid-sub-src", minzoom: 7,
+        filter: ["==", ["get", "status"], s.key],
+        layout: { "text-field": ["get", "name"], "text-font": ["Noto Sans Regular"], "text-size": 8, "text-offset": [0, 1.2], "text-anchor": "top" },
+        paint: { "text-color": "#334455", "text-halo-color": "#fff", "text-halo-width": 1.4 } });
+    });
 
     // Grid corridors (edges) — resolve each edge's two endpoints to coordinates
     const edgeFeatures = edges
@@ -420,7 +597,38 @@ export default function useNigeriaMap({ isDark, BASEMAP } = {}) {
       })
       .filter(Boolean);
     map.addSource("grid-edge-src", { type: "geojson", data: { type: "FeatureCollection", features: edgeFeatures } });
-    map.addLayer({ id: "grid-edge-lines", type: "line", source: "grid-edge-src", paint: { "line-color": GRID_C.edge, "line-width": 1, "line-opacity": 0.55 } });
+    // One layer per status (not one shared layer) — colors straight off TCN's
+    // own transmission-line-status legend. Existing lines are the ones this
+    // app actually routes over (see loadGraph()'s status filter); ongoing/
+    // proposed are reference-only, and now independently toggleable so
+    // "Proposed 330kV Transmission Lines" can be shown on its own.
+    TX_LINE_STATUS.forEach(s => {
+      map.addLayer({ id: `grid-edge-${s.key}`, type: "line", source: "grid-edge-src",
+        filter: ["==", ["get", "status"], s.key],
+        paint: { "line-color": s.color, "line-width": 1, "line-opacity": 0.85 } });
+    });
+
+    // TCN's named 330kV loops (see TCN_LOOPS) — drawn from the same substation
+    // coords, independent of grid_edge, so the ongoing loop's not-yet-built
+    // segments can still be shown without implying they're routable. Every
+    // loop on TCN's own map (including the ongoing one) is a solid curve —
+    // there's no dashed line anywhere in their legend, that was this app's
+    // own earlier invention and has been removed.
+    const loopFeatures = _buildLoopCurves(gridNodesRef.current);
+    gridLoopFeaturesRef.current = loopFeatures;
+    map.addSource("tcn-loop-src", { type: "geojson", data: { type: "FeatureCollection", features: loopFeatures }, generateId: true });
+    // One layer per loop (filtered to that loop's own feature) so each of the
+    // 6 loops can be toggled independently from the sidebar.
+    TCN_LOOPS.forEach(loop => {
+      map.addLayer({ id: `tcn-loop-${loop.id}`, type: "line", source: "tcn-loop-src",
+        filter: ["==", ["get", "loopId"], loop.id],
+        layout: { "line-cap": "round", "line-join": "round" },
+        paint: {
+          "line-color": ["get", "color"],
+          "line-width": ["case", ["boolean", ["feature-state", "hover"], false], 6, 4],
+          "line-opacity": ["case", ["boolean", ["feature-state", "dim"], false], 0.15, 0.85],
+        } });
+    });
 
     // GenCos (PPA-backed)
     const gencoFeatures = gencos.map(g => ({ type: "Feature", properties: { ...g }, geometry: { type: "Point", coordinates: [g.lon, g.lat] } }));
@@ -498,6 +706,91 @@ export default function useNigeriaMap({ isDark, BASEMAP } = {}) {
     });
     map.on("mouseenter", "grid-offtaker-circle", () => { map.getCanvas().style.cursor = "pointer"; });
     map.on("mouseleave", "grid-offtaker-circle", () => { map.getCanvas().style.cursor = ""; });
+
+    // Substations and transmission lines each render as one layer per status
+    // now (see SUB_STATUS_LAYER_GROUPS / EDGE_STATUS_LAYER_GROUPS) — bind the
+    // same click/hover behavior to every one of them rather than a single id.
+    const statusLabelOf = status => status === "proposed" ? "Proposed (not yet built)" : status === "ongoing" ? "Ongoing (under construction)" : "Existing";
+    SUBSTATION_STATUS.filter(s => s.key !== "ongoing-nipp").forEach(s => {
+      const layerId = `grid-sub-ring-outer-${s.key}`;
+      map.on("click", layerId, e => {
+        featureHandled.current = true;
+        const p = e.features[0].properties;
+        setSelectedFeature({ name: p.name, type: "TCN Substation", rows: [
+          ["Voltage", `${p.voltage_kv}kV`], ["Status", statusLabelOf(p.status)], ["Injection point", p.is_injection ? "Yes" : "No"],
+        ] });
+      });
+      map.on("mouseenter", layerId, e => {
+        map.getCanvas().style.cursor = "pointer";
+        _hoverLabel(map, e.features[0].geometry.coordinates, e.features[0].properties.name);
+      });
+      map.on("mouseleave", layerId, () => { map.getCanvas().style.cursor = ""; _hideHoverLabel(); });
+    });
+
+    TX_LINE_STATUS.forEach(s => {
+      const layerId = `grid-edge-${s.key}`;
+      map.on("click", layerId, e => {
+        featureHandled.current = true;
+        const p = e.features[0].properties;
+        setSelectedFeature({ name: `${p.from_node} — ${p.to_node}`, type: "TCN Transmission Line", rows: [
+          ["Status", statusLabelOf(p.status)], ["Length", `${p.km} km`],
+        ] });
+      });
+      map.on("mouseenter", layerId, e => {
+        map.getCanvas().style.cursor = "pointer";
+        const p = e.features[0].properties;
+        _hoverLabel(map, e.lngLat, `${p.from_node} — ${p.to_node}`);
+      });
+      map.on("mouseleave", layerId, () => { map.getCanvas().style.cursor = ""; _hideHoverLabel(); });
+    });
+
+    // TCN loop overlay — hover thickens the hovered segment; click highlights
+    // the whole loop (dims every other loop's segments) and shows its ordered
+    // route in the detail panel. Clicking the same loop again clears it.
+    const TCN_LOOP_LAYERS = TCN_LOOPS.map(loop => `tcn-loop-${loop.id}`);
+    let loopHoverId = null;
+    let loopSelectedId = null;
+    const setLoopHover = (id, hover) => { if (id !== null) map.setFeatureState({ source: "tcn-loop-src", id }, { hover }); };
+    TCN_LOOP_LAYERS.forEach(layerId => {
+      map.on("mousemove", layerId, e => {
+        map.getCanvas().style.cursor = "pointer";
+        if (!e.features.length) return;
+        const id = e.features[0].id;
+        _hoverLabel(map, e.lngLat, e.features[0].properties.loopName);
+        if (id === loopHoverId) return;
+        setLoopHover(loopHoverId, false);
+        loopHoverId = id;
+        setLoopHover(loopHoverId, true);
+      });
+      map.on("mouseleave", layerId, () => {
+        map.getCanvas().style.cursor = "";
+        _hideHoverLabel();
+        setLoopHover(loopHoverId, false);
+        loopHoverId = null;
+      });
+      map.on("click", layerId, e => {
+        featureHandled.current = true;
+        const p = e.features[0].properties;
+        const clickedId = p.loopId;
+        const clearing = clickedId === loopSelectedId;
+        loopSelectedId = clearing ? null : clickedId;
+        gridLoopFeaturesRef.current.forEach((f, idx) => {
+          const dim = !clearing && f.properties.loopId !== clickedId;
+          map.setFeatureState({ source: "tcn-loop-src", id: idx }, { dim });
+        });
+        if (clearing) { setSelectedFeature(null); return; }
+        const loop = TCN_LOOPS.find(l => l.id === clickedId);
+        setSelectedFeature({
+          name: loop.name,
+          type: `TCN Loop — ${loop.status === "ongoing" ? "Ongoing" : "Existing"}`,
+          rows: [
+            ["Status", loop.status === "ongoing" ? "Ongoing (not yet routable)" : "Existing 330kV"],
+            ["Stations", String(loop.nodes.length - 1)],
+            ["Route", loop.nodes.join(" → ")],
+          ],
+        });
+      });
+    });
   }
 
   // Empty sources/layers for the route highlight — populated later by computeGridRoute.
@@ -568,6 +861,19 @@ export default function useNigeriaMap({ isDark, BASEMAP } = {}) {
       .setLngLat(lngLat)
       .setHTML(`<div class="nga-popup"><p class="nga-popup-title">${title}</p><p class="nga-popup-sub">${subtitle}</p>${rows.map(([k, v]) => `<div class="nga-popup-row"><span class="nga-popup-key">${k}</span><span class="nga-popup-val">${v}</span></div>`).join("")}</div>`)
       .addTo(map);
+  }
+
+  // Lightweight, no-close-button label shown on hover (not click) — one
+  // shared popup instance reused across every layer that calls this, since
+  // only one thing is ever hovered at a time.
+  function _hoverLabel(map, lngLat, text) {
+    if (!hoverPopupRef.current) {
+      hoverPopupRef.current = new maplibregl.Popup({ closeButton: false, closeOnClick: false, offset: 10 });
+    }
+    hoverPopupRef.current.setLngLat(lngLat).setHTML(`<div style="font:600 11px sans-serif;">${text}</div>`).addTo(map);
+  }
+  function _hideHoverLabel() {
+    hoverPopupRef.current?.remove();
   }
 
   // ── Visibility sync helper ──────────────────────────────────
@@ -681,7 +987,12 @@ export default function useNigeriaMap({ isDark, BASEMAP } = {}) {
     }
     const injectionNode = nodes.get(result.injection_node);
     if (injectionNode && destCoords && result.last_mile_km > 0) {
-      lines.push({ type: "Feature", properties: { kind: "lastmile" }, geometry: { type: "LineString", coordinates: [[injectionNode.lon, injectionNode.lat], destCoords] } });
+      // Road-following path from OSRM when the backend resolved one (dynamic/pinned
+      // destinations only) — otherwise a straight segment, same as the trunk hops.
+      const lastMileCoords = result.last_mile_geometry?.length
+        ? result.last_mile_geometry
+        : [[injectionNode.lon, injectionNode.lat], destCoords];
+      lines.push({ type: "Feature", properties: { kind: "lastmile" }, geometry: { type: "LineString", coordinates: lastMileCoords } });
     }
     map.getSource("grid-route-line-src")?.setData({ type: "FeatureCollection", features: lines });
 

@@ -4,6 +4,7 @@ import { MapPin, DotsSixVertical } from "@phosphor-icons/react";
 import Topbar         from "./components/Topbar";
 import Sidebar        from "./components/Sidebar";
 import MapView        from "./components/MapView";
+import MapLegend      from "./components/MapLegend";
 import LocationFinder from "./components/LocationFinder";
 import StatusBar      from "./components/StatusBar";
 import useNigeriaMap  from "./hooks/useNigeriaMap";
@@ -19,7 +20,12 @@ const BASEMAP = {
 export default function App() {
   // Dark theme by default — this is an ops-console tool, not a marketing page
   const [isDark,       setIsDark]       = useState(true);
-  const [sidebarOpen,  setSidebarOpen]  = useState(true);
+  // Below the `sm` breakpoint the sidebar becomes a full overlay rather than
+  // pushing the map — default it closed there so the map is what you see
+  // first, matching the desktop default of open.
+  const [sidebarOpen,  setSidebarOpen]  = useState(() =>
+    typeof window === "undefined" || !window.matchMedia("(max-width: 639px)").matches
+  );
   const mapAreaRef  = useRef(null);
   const dragControls = useDragControls();
 
@@ -135,6 +141,8 @@ export default function App() {
               </motion.div>
             )}
           </AnimatePresence>
+
+          {mapReady && <MapLegend />}
         </div>
       </div>
 

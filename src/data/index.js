@@ -1,7 +1,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 //  Nigeria C&I GIS — Market Participants Data
 //  Sources: NERC Excel contact list (all 6 sheets) + enriched hardcoded data
-//  DISCOs: 12 | GenCos/NIPP/IPP: 32 | Traders: 5 | C&I Customers: 60
+//  DISCOs: 12 | GenCos/NIPP/IPP: 42 | Traders: 5 | C&I Customers: 60
 // ─────────────────────────────────────────────────────────────────────────────
 
 // ── DISCOs (12) ── Hardcoded data enriched with NERC contact details ─────────
@@ -20,45 +20,65 @@ export const DISCOS = [
   { id:"YEDC",   name:"Yola Electricity Distribution Co. PLC",           lat:9.20,  lng:12.48, states:"Adamawa, Borno, Yobe",                     customers:"185K+", capacity:"400 MW",    color:"#f97316", phone:"08146259508", email:"info@yedc.com.ng",             address:"Jimeta-Yola, Adamawa State" },
 ];
 
-// ── GenCos / NIPP / IPP (32) ── All coordinates verified via Google Places ──
+// ── GenCos / NIPP / IPP (42) ── Legacy 32 verified via Google Places; 10 from
+// the TCN loop map (unverified coords, flagged below) ─────────────────────
 export const GENCOS = [
   // ── Legacy GenCos ────────────────────────────────────────────────────────
   { id:"egbin",       name:"Egbin Power Plant",          type:"Thermal", subtype:"GenCo", lat:6.5628,  lng:3.6145,  capacity:1320, fuel:"Gas",   owner:"Sahara Power",      phone:"08038237747", email:"kingsleyokutie@egbinpower.com" },
   { id:"kainji",      name:"Kainji Hydro Power",         type:"Hydro",   subtype:"GenCo", lat:9.8637,  lng:4.6121,  capacity:760,  fuel:"Water", owner:"Mainstream Energy", phone:"08086464331", email:"info@mainstream.com" },
   { id:"jebba",       name:"Mainstream (Jebba Station)", type:"Hydro",   subtype:"GenCo", lat:9.1367,  lng:4.7878,  capacity:578,  fuel:"Water", owner:"Mainstream Energy", phone:"08086464331", email:"info@mainstream.com" },
   { id:"shiroro",     name:"Shiroro Hydro Power",        type:"Hydro",   subtype:"GenCo", lat:9.9731,  lng:6.8343,  capacity:600,  fuel:"Water", owner:"TCN/NBET",           phone:"08038085094", email:"shirorotechreview@yahoo.com" },
-  { id:"ughelli",     name:"Ughelli Power PLC",          type:"Thermal", subtype:"GenCo", lat:5.5422,  lng:5.9174,  capacity:972,  fuel:"Gas",   owner:"Transcorp",          phone:"08039754537", email:"info@trancorpuelli.com" },
-  { id:"sapele",      name:"Eurafric Sapele Power PLC",   type:"Thermal", subtype:"GenCo", lat:5.9239,  lng:5.6459,  capacity:1020, fuel:"Gas",   owner:"Eurafic/Transcorp",  phone:"08033931598", email:"ifionuspple@yahoo.com" },
-  { id:"afam",        name:"Afam Power PLC",             type:"Thermal", subtype:"GenCo", lat:4.8511,  lng:7.2533,  capacity:624,  fuel:"Gas",   owner:"SPDC/NBET",          phone:"",            email:"info@afampowerplc.com" },
+  { id:"ughelli",     name:"Ughelli Power PLC (Delta Power Holding Co.)", type:"Thermal", subtype:"GenCo", lat:5.5422,  lng:5.9174,  capacity:900,  fuel:"Gas",   owner:"Transcorp",          phone:"08039754537", email:"info@trancorpuelli.com" },
+  { id:"sapele",      name:"Eurafric Sapele Power PLC",   type:"Thermal", subtype:"GenCo", lat:5.9239,  lng:5.6459,  capacity:960,  fuel:"Gas",   owner:"Eurafic/Transcorp",  phone:"08033931598", email:"ifionuspple@yahoo.com" },
+  { id:"afam",        name:"Afam Power PLC",             type:"Thermal", subtype:"GenCo", lat:4.8511,  lng:7.2533,  capacity:756,  fuel:"Gas",   owner:"SPDC/NBET",          phone:"",            email:"info@afampowerplc.com" },
   { id:"geregu",      name:"Geregu Power PLC",           type:"Thermal", subtype:"GenCo", lat:7.4706,  lng:6.6595,  capacity:414,  fuel:"Gas",   owner:"AMNI Petroleum",     phone:"08075370694", email:"phcngps@gmail.com" },
   { id:"olorunsogo",  name:"Olorunsogo Power PLC",       type:"Thermal", subtype:"GenCo", lat:6.8848,  lng:3.3162,  capacity:726,  fuel:"Gas",   owner:"Mainstream Energy",  phone:"08034022432", email:"okezic@gmail.com" },
   { id:"omotosho",    name:"Omotosho Power PLC",         type:"Thermal", subtype:"GenCo", lat:6.7325,  lng:4.7115,  capacity:500,  fuel:"Gas",   owner:"Amni Intl",          phone:"08034022432", email:"okezic@gmail.com" },
   { id:"azura",       name:"Azura-Edo IPP",              type:"Thermal", subtype:"IPP",   lat:6.4110,  lng:5.6804,  capacity:461,  fuel:"Gas",   owner:"Azura Power",        phone:"08128738420", email:"commercial@azuraedo.com" },
   { id:"calabar",     name:"Calabar GenCo",              type:"Thermal", subtype:"GenCo", lat:5.0702,  lng:8.3386,  capacity:611,  fuel:"Gas",   owner:"Calabar Power",      phone:"",            email:"" },
-  { id:"ibom",        name:"Ibom Power",                 type:"Thermal", subtype:"IPP",   lat:4.5644,  lng:7.5674,  capacity:190,  fuel:"Gas",   owner:"Akwa Ibom State",    phone:"08052340000", email:"info@ibompower.com" },
-  { id:"trans_amadi", name:"Trans Amadi Power",          type:"Thermal", subtype:"GenCo", lat:4.8174,  lng:7.0294,  capacity:100,  fuel:"Gas",   owner:"Rivers State",       phone:"",            email:"" },
+  { id:"ibom",        name:"Ibom Power",                 type:"Thermal", subtype:"IPP",   lat:4.5644,  lng:7.5674,  capacity:188,  fuel:"Gas",   owner:"Akwa Ibom State",    phone:"08052340000", email:"info@ibompower.com" },
+  { id:"trans_amadi", name:"Trans Amadi Power",          type:"Thermal", subtype:"GenCo", lat:4.8174,  lng:7.0294,  capacity:30,   fuel:"Gas",   owner:"Rivers State",       phone:"",            email:"" },
   { id:"paras",       name:"Paras Energy & Natural Resources", type:"Thermal", subtype:"IPP", lat:6.7200, lng:3.5212, capacity:100, fuel:"Gas",  owner:"Paras Energy",       phone:"08073794583", email:"info@parasenergy.com" },
 
   // ── NIPP Companies (NDPHC subsidiaries) ──────────────────────────────────
-  { id:"nipp_alaoji",      name:"Alaoji Generation Co. (NIPP)",      type:"Thermal", subtype:"NIPP", lat:5.0670,  lng:7.3213,  capacity:504,  fuel:"Gas",   owner:"NDPHC", phone:"08036437318", email:"legal@ndphc.net" },
-  { id:"nipp_calabar",     name:"Calabar Generation Co. (NIPP)",     type:"Thermal", subtype:"NIPP", lat:5.0702,  lng:8.3386,  capacity:561,  fuel:"Gas",   owner:"NDPHC", phone:"08036437318", email:"legal@ndphc.net" },
-  { id:"nipp_gbarain",     name:"Gbarain Generation Co. (NIPP)",     type:"Thermal", subtype:"NIPP", lat:5.0310,  lng:6.3015,  capacity:225,  fuel:"Gas",   owner:"NDPHC", phone:"08033378362", email:"legal@ndphc.net" },
+  { id:"nipp_alaoji",      name:"Alaoji Generation Co. (NIPP)",      type:"Thermal", subtype:"NIPP", lat:5.0670,  lng:7.3213,  capacity:1079, fuel:"Gas",   owner:"NDPHC", phone:"08036437318", email:"legal@ndphc.net" },
+  { id:"nipp_calabar",     name:"Calabar Generation Co. (NIPP)",     type:"Thermal", subtype:"NIPP", lat:5.0702,  lng:8.3386,  capacity:565,  fuel:"Gas",   owner:"NDPHC", phone:"08036437318", email:"legal@ndphc.net" },
+  { id:"nipp_gbarain",     name:"Gbarain Generation Co. (NIPP)",     type:"Thermal", subtype:"NIPP", lat:5.0310,  lng:6.3015,  capacity:504,  fuel:"Gas",   owner:"NDPHC", phone:"08033378362", email:"legal@ndphc.net" },
   { id:"nipp_geregu",      name:"Geregu Generation Co. (NIPP)",      type:"Thermal", subtype:"NIPP", lat:7.4706,  lng:6.6595,  capacity:434,  fuel:"Gas",   owner:"NDPHC", phone:"08036437318", email:"legal@ndphc.net" },
-  { id:"nipp_ihovbor",     name:"Ihovbor Generation Co. (NIPP)",     type:"Thermal", subtype:"NIPP", lat:6.4068,  lng:5.6826,  capacity:461,  fuel:"Gas",   owner:"NDPHC", phone:"08033378362", email:"legal@ndphc.net" },
+  { id:"nipp_ihovbor",     name:"Ihovbor Generation Co. (NIPP)",     type:"Thermal", subtype:"NIPP", lat:6.4068,  lng:5.6826,  capacity:1000, fuel:"Gas",   owner:"NDPHC", phone:"08033378362", email:"legal@ndphc.net" },
   { id:"nipp_ogorode",     name:"Ogorode Generation Co. (NIPP)",     type:"Thermal", subtype:"NIPP", lat:5.9251,  lng:5.6453,  capacity:450,  fuel:"Gas",   owner:"NDPHC", phone:"08036437318", email:"ebobor@lawfieldsolicitors.com" },
   { id:"nipp_olorunsogo",  name:"Olorunsogo Generation Co. (NIPP)",  type:"Thermal", subtype:"NIPP", lat:6.8848,  lng:3.3162,  capacity:676,  fuel:"Gas",   owner:"NDPHC", phone:"08033378362", email:"ebobor@lawfieldsolicitors.com" },
-  { id:"nipp_omotosho",    name:"Omotosho Generation Co. (NIPP)",    type:"Thermal", subtype:"NIPP", lat:6.7325,  lng:4.7115,  capacity:500,  fuel:"Gas",   owner:"NDPHC", phone:"08033378362", email:"legal@ndphc.net" },
+  { id:"nipp_omotosho",    name:"Omotosho Generation Co. (NIPP)",    type:"Thermal", subtype:"NIPP", lat:6.7325,  lng:4.7115,  capacity:255,  fuel:"Gas",   owner:"NDPHC", phone:"08033378362", email:"legal@ndphc.net" },
 
   // ── IPP Companies ────────────────────────────────────────────────────────
   { id:"ipp_aes",       name:"AES Nigeria (Barge)",                    type:"Thermal", subtype:"IPP", lat:6.5595,  lng:3.6146,  capacity:270,  fuel:"Gas",   owner:"AES Corp",          phone:"",            email:"" },
   { id:"ipp_fipc",      name:"First Independent Power Co.",           type:"Thermal", subtype:"IPP", lat:4.8032,  lng:7.3259,  capacity:160,  fuel:"Gas",   owner:"First Hydrocarbon", phone:"08033114820", email:"info@fipl-ng.com" },
   { id:"ipp_ajaokuta",  name:"Ajaokuta Steel Co. Ltd (ASCON)",        type:"Thermal", subtype:"IPP", lat:7.5221,  lng:6.6956,  capacity:110,  fuel:"Gas",   owner:"ASCON",             phone:"08037034501", email:"joeisah@gmail.com" },
-  { id:"ipp_agip",      name:"AGIP NAOC (Okpai IPP)",                 type:"Thermal", subtype:"IPP", lat:5.7112,  lng:6.5750,  capacity:480,  fuel:"Gas",   owner:"ENI/AGIP",          phone:"07034190612", email:"ebikabowei.fakiogles@naoc.agip.it" },
+  { id:"ipp_agip",      name:"AGIP NAOC (Okpai IPP)",                 type:"Thermal", subtype:"IPP", lat:5.7112,  lng:6.5750,  capacity:450,  fuel:"Gas",   owner:"ENI/AGIP",          phone:"07034190612", email:"ebikabowei.fakiogles@naoc.agip.it" },
   { id:"ipp_geometric", name:"Geometric Power Ltd",                   type:"Thermal", subtype:"IPP", lat:5.4527,  lng:7.5248,  capacity:188,  fuel:"Gas",   owner:"Geometric Power",   phone:"08023464664", email:"caven@geometricpower.com" },
   { id:"ipp_ogbele",    name:"Ogbele Cummins",                        type:"Thermal", subtype:"IPP", lat:5.0500,  lng:6.6800,  capacity:56,   fuel:"Gas",   owner:"Cummins",           phone:"08023176262", email:"info@cummis-power-nigeria.com" },
   { id:"ipp_lambarimi", name:"Lamba Rimi Electricity Generation Co.", type:"Thermal", subtype:"IPP", lat:13.0100, lng:7.5900,  capacity:50,   fuel:"Gas",   owner:"Lamba Rimi",        phone:"08144945956", email:"philefe71@yahoo.com" },
   { id:"ipp_taopex",    name:"Taopex Energy Services Co.",            type:"Thermal", subtype:"IPP", lat:6.5850,  lng:3.3559,  capacity:80,   fuel:"Gas",   owner:"Taopex Energy",     phone:"08033539817", email:"info@taopexenergy.com" },
   { id:"ipp_mabon",     name:"Mabon Energy Ltd (Dadin Kowa)",         type:"Hydro",   subtype:"IPP", lat:10.3212, lng:11.4815, capacity:40,   fuel:"Water", owner:"Mabon Energy",      phone:"08053274610", email:"mabonenergy@mabonltd.com" },
+
+  // ── From TCN's "Five Existing and One Ongoing Transmission Line Loops" map ──
+  // Coordinates here are area-level estimates (nearest town/facility), NOT
+  // verified via Google Places like the rest of this file — confirm before
+  // relying on them for anything precision-sensitive. Status/type below (and
+  // Ughelli's capacity above) were cross-checked directly against the map's
+  // own symbol legend (generation-station shape+color, not just its text),
+  // not just the capacity labels — an entry with no `status` field is
+  // "existing" per that legend.
+  { id:"nipp_egbema",   name:"Egbema Generation Co. (NIPP)", type:"Thermal", subtype:"NIPP", lat:5.53,  lng:6.75,  capacity:378, fuel:"Gas", owner:"NDPHC", phone:"", email:"" },
+  { id:"nipp_omoku2",   name:"Omoku II Generation Co. (NIPP)", type:"Thermal", subtype:"NIPP", lat:5.30, lng:6.65, capacity:252, fuel:"Gas", owner:"NDPHC", phone:"", email:"" },
+  { id:"ipp_omoku",     name:"Omoku Power Station",          type:"Thermal", subtype:"IPP", lat:5.298, lng:6.648, capacity:132, fuel:"Gas", owner:"", phone:"", email:"" },
+  { id:"ipp_eleme",     name:"Eleme Power Station",          type:"Thermal", subtype:"IPP", lat:4.80,  lng:7.13,  capacity:100, fuel:"Gas", owner:"", phone:"", email:"" },
+  { id:"ipp_notore",    name:"Notore Power Station",         type:"Thermal", subtype:"IPP", lat:4.72,  lng:7.17,  capacity:200, fuel:"Gas", owner:"Notore Chemical Industries", phone:"", email:"" },
+  { id:"ipp_shell",     name:"Shell IPP",                    type:"Thermal", subtype:"IPP", lat:4.853, lng:7.252, capacity:670, fuel:"Gas", owner:"Shell", phone:"", email:"" },
+  { id:"ipp_alscon",    name:"Alscon (Aluminium Smelter Co.)", type:"Thermal", subtype:"IPP", lat:4.58, lng:7.55, capacity:450, fuel:"Gas", owner:"ALSCON", phone:"", email:"" },
+  { id:"zungeru",       name:"Zungeru Hydro Power Station",   type:"Hydro",   subtype:"GenCo", lat:9.80,  lng:6.08,  capacity:700, fuel:"Water", owner:"FGN/CNEEC", phone:"", email:"", status:"ongoing" },
+  { id:"kashimbila",    name:"Kashimbila Hydro Power Station", type:"Hydro",   subtype:"GenCo", lat:6.93,  lng:10.15, capacity:40,  fuel:"Water", owner:"FGN", phone:"", email:"", status:"ongoing" },
+  { id:"kazaure_pv",    name:"Kazaure Solar PV Power Station", type:"Solar",   subtype:"GenCo", lat:12.65, lng:8.42,  capacity:null, fuel:"Solar", owner:"", phone:"", email:"", status:"proposed" },
 ];
 
 // ── Traders (5) ── From NERC contact list ─────────────────────────────────────
@@ -148,6 +168,31 @@ export const CI_CUSTOMERS = [
   { id:"ci059", name:"PROFORTE MINING AND RESOURCES LIMITED", lat:6.56516, lng:3.42497, state:"Lagos", address:"NO14A Ajisafe Street, Off Isaac John Ikeja Lagos State", sector:"Energy / Mining", phone:"09071919135", email:"adetunji.adeyeye@taopexenergy.com" },
   { id:"ci060", name:"ER-KANG MINING NIGERIA COMPANY LIMITED", lat:8.9919, lng:4.64307, state:"Kwara", address:"NO2 Haruna Street, Agric Estate, Ilorin, Kwara State", sector:"Energy / Mining", phone:"07032477660", email:"nyemmy@gmail.com" },
   { id:"ci061", name:"LEB OIL NIGERIA LTD", lat:5.7024, lng:5.90046, state:"Delta", address:"NO10 Eboigbe Road, Owa Alero Agbor Delta State", sector:"Energy / Mining", phone:"07032156555", email:"leboil@leboilltd.com" },
+];
+
+// ── TCN 330kV Transmission Line Loops ─────────────────────────────────────────
+// Source: TCN's own "Five Existing and One Ongoing Transmission Line Loops" map
+// (System Planning & Development Dept). Node names must match `substation.name`
+// in the Grid Atlas — the loop is drawn by looking up each node's live coords,
+// not by duplicating coordinates here. The ongoing loop's not-yet-built
+// segments (Kano->Katsina->Sokoto->Birnin Kebbi->Kainji) DO have backing
+// grid_edge rows now (status='ongoing') so they render on the transmission-
+// line-status layer too, but loadGraph() excludes non-existing edges, so
+// they still never participate in routing. Colors below are sampled directly
+// off TCN's own loop-line legend swatches, not approximated.
+export const TCN_LOOPS = [
+  { id: "loop1", name: "Onitsha–Alaoji–Ikot Ekpene–New Haven", color: "#00ff00", status: "existing",
+    nodes: ["Onitsha", "Alaoji", "Ikot Ekpene", "Ugwuaji", "New Haven", "Onitsha"] },
+  { id: "loop2", name: "Ikeja West–Benin–Osogbo–Ayede", color: "#72001b", status: "existing",
+    nodes: ["Ikeja West", "Benin", "Osogbo", "Ayede (Ibadan)", "Ikeja West"] },
+  { id: "loop3", name: "Benin–Onitsha–New Haven–Makurdi–Jos–Kaduna–Shiroro–Abuja–Ajaokuta", color: "#ff00ff", status: "existing",
+    nodes: ["Benin", "Onitsha", "New Haven", "Ugwuaji", "Apir/Makurdi", "Makeri (Jos)", "Kaduna", "Shiroro", "Katampe", "Gwagwalada", "Lokoja", "Ajaokuta", "Benin"] },
+  { id: "loop4", name: "Benin–Osogbo–Ganmo–Jebba–Shiroro–Abuja–Ajaokuta", color: "#ffff00", status: "existing",
+    nodes: ["Benin", "Osogbo", "Ganmo (Ilorin)", "Jebba", "Shiroro", "Katampe", "Gwagwalada", "Lokoja", "Ajaokuta", "Benin"] },
+  { id: "loop5", name: "Ikeja West–Benin–Onitsha–Alaoji–Ikot Ekpene–New Haven–Makurdi–Jos–Kaduna–Shiroro–Jebba–Ganmo–Osogbo (outer ring)", color: "#00ffff", status: "existing",
+    nodes: ["Ikeja West", "Benin", "Onitsha", "Alaoji", "Ikot Ekpene", "New Haven", "Ugwuaji", "Apir/Makurdi", "Makeri (Jos)", "Kaduna", "Shiroro", "Jebba", "Ganmo (Ilorin)", "Osogbo", "Ayede (Ibadan)", "Ikeja West"] },
+  { id: "loop6", name: "Kainji–Jebba–Shiroro–Kaduna–Kano–Katsina–Sokoto–Birnin Kebbi", color: "#4a0094", status: "ongoing",
+    nodes: ["Kainji", "Jebba", "Shiroro", "Kaduna", "Kumbotso (Kano)", "Katsina", "Sokoto", "Birnin Kebbi", "Kainji"] },
 ];
 
 // ── Geopolitical Zones ───────────────────────────────────────────────────────

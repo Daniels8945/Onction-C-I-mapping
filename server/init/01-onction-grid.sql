@@ -39,13 +39,15 @@ CREATE TABLE substation (
   voltage_kv    integer  NOT NULL,
   lat           numeric(9,6) NOT NULL,
   lon           numeric(9,6) NOT NULL,
-  is_injection  boolean  NOT NULL DEFAULT false   -- usable as a delivery point
+  is_injection  boolean  NOT NULL DEFAULT false,  -- usable as a delivery point
+  status        text     NOT NULL DEFAULT 'existing'  -- existing | ongoing | proposed, per TCN's own loop-map legend
 );
 
 CREATE TABLE grid_edge (
   from_node text NOT NULL REFERENCES substation(name),
   to_node   text NOT NULL REFERENCES substation(name),
   km        numeric(8,2) NOT NULL,
+  status    text NOT NULL DEFAULT 'existing',  -- existing | ongoing | proposed, per TCN's own line-status legend
   PRIMARY KEY (from_node, to_node)
 );
 COMMENT ON TABLE grid_edge IS 'Undirected: each corridor is stored once. Queries must union both directions (see v_edge_bi).';
@@ -106,7 +108,17 @@ INSERT INTO substation (name, voltage_kv, lat, lon, is_injection) VALUES
   ('Sapele', 330, 5.88, 5.7, false),
   ('Shiroro', 330, 9.9667, 6.8333, false),
   ('Tamburawa 132kV', 132, 11.875, 8.49, true),
-  ('Ugwuaji', 330, 6.4, 7.5, false);
+  ('Ugwuaji', 330, 6.4, 7.5, false),
+  ('Maiduguri 132kV', 132, 11.946083, 13.331139, true),
+  -- Cross-referenced against TCN's "Five Existing and One Ongoing Transmission
+  -- Line Loops" map. Ikot Ekpene sits on two of the five EXISTING loops (its
+  -- corridors are added below). Katsina/Sokoto/Birnin Kebbi sit on the
+  -- ONGOING loop only — added as nodes for reference, deliberately left
+  -- unconnected below since that line isn't built yet per TCN's own map.
+  ('Ikot Ekpene', 330, 5.1811, 7.7327, true),
+  ('Katsina', 330, 12.9908, 7.6018, true),
+  ('Sokoto', 330, 13.0059, 5.2476, true),
+  ('Birnin Kebbi', 330, 12.4534, 4.1974, true);
 
 INSERT INTO grid_edge (from_node, to_node, km) VALUES
   ('Kainji', 'Jebba', 84.45),
@@ -179,7 +191,141 @@ INSERT INTO grid_edge (from_node, to_node, km) VALUES
   -- Ikorodu 132kV -> Sagamu 132kV: a real, separate double-circuit 132kV line,
   -- reported length 35km (NISO/TCN coverage, May 2026) — used directly instead
   -- of the great-circle estimate (29.9km) since an actual figure exists.
-  ('Ikorodu 132kV', 'Sagamu 132kV', 35.0);
+  ('Ikorodu 132kV', 'Sagamu 132kV', 35.0),
+  -- Maiduguri 132kV -> Ashaka: no surveyed corridor length available — this is
+  -- the great-circle distance as a placeholder so MEPP participates in routing
+  -- like every other GenCo. Replace with a real TCN corridor length if/when one
+  -- is confirmed (same pattern as the two edges above).
+  ('Maiduguri 132kV', 'Ashaka', 237.8),
+  -- The following three corridors are confirmed to exist on TCN's own loop
+  -- map (each appears on 2+ of the five EXISTING — not ongoing — loops), but
+  -- weren't in this dataset at all. Lengths are great-circle placeholders,
+  -- same caveat as above, pending exact surveyed corridor lengths.
+  ('Ikeja West', 'Benin', 254.2),
+  ('Benin', 'Osogbo', 196.1),
+  ('Alaoji', 'Ikot Ekpene', 43.3),
+  ('Ikot Ekpene', 'New Haven', 143.4);
+
+-- Status, cross-referenced directly against the symbols on TCN's own loop map
+-- (its legend distinguishes proposed/on-going/on-going-NIPP/existing bulk S/S
+-- with different ring colors) rather than assumed. Katsina carries the
+-- "on-going" ring; Sokoto and Birnin Kebbi carry "proposed" — all three sit on
+-- the ongoing Loop 6 corridor, but the map itself distinguishes them further.
+UPDATE substation SET status = 'ongoing'  WHERE name = 'Katsina';
+UPDATE substation SET status = 'proposed' WHERE name IN ('Sokoto', 'Birnin Kebbi');
+
+-- New Maiduguri: a separate, larger 330kV bulk substation marked "proposed"
+-- on TCN's map — distinct from the existing 132kV "Maiduguri 132kV" node
+-- above, which already carries MEPP's connection. Coordinates are a
+-- town-level estimate pending survey data, same caveat as this file's other
+-- estimates. Deliberately left unconnected (no grid_edge row), like the
+-- other proposed/ongoing reference nodes — it isn't built yet.
+INSERT INTO substation (name, voltage_kv, lat, lon, is_injection, status) VALUES
+  ('New Maiduguri', 330, 11.90, 13.35, true, 'proposed');
+
+-- The ongoing Loop 6 corridor's not-yet-built segments (Kano->Katsina->Sokoto
+-- ->Birnin Kebbi->Kainji), added as real grid_edge rows now that they carry a
+-- status: visible on the transmission-line-status layer, but excluded from
+-- the routing graph (see loadGraph()'s WHERE clause) since they aren't built.
+-- Distances are great-circle placeholders, same caveat as this file's other
+-- estimates — no surveyed corridor length is public yet for an unbuilt line.
+INSERT INTO grid_edge (from_node, to_node, km, status) VALUES
+  ('Kumbotso (Kano)', 'Katsina',      154.19, 'ongoing'),
+  ('Katsina',         'Sokoto',       255.07, 'ongoing'),
+  ('Sokoto',          'Birnin Kebbi', 129.42, 'ongoing'),
+  ('Birnin Kebbi',    'Kainji',       291.24, 'ongoing');
+
+-- ---------------------------------------------------------------------
+-- PROPOSED 330kV network — traced segment-by-segment off TCN's own map
+-- (2026-09-09). None of these towns had any substation on this map before;
+-- every one of them is new. Coordinates are town-level estimates (not
+-- Google-Places-verified), confidence varies a lot — a handful (Gazuoa,
+-- Adiabo Trx, New Apo, Kukwaba, Rigasa, Millennium City) are low-confidence
+-- guesses for very small localities and should be treated as placeholders
+-- pending real survey data. Distances: where the source map printed a label
+-- unambiguously attached to one segment it's used directly (flagged
+-- "map-labeled" below); everywhere else it's a great-circle estimate between
+-- the two town coordinates (flagged "haversine estimate"), same convention
+-- as the rest of this file. All status='proposed', so none of this
+-- participates in routing (see loadGraph()'s WHERE clause) — it's reference-
+-- layer only until any of it is actually built.
+INSERT INTO substation (name, voltage_kv, lat, lon, is_injection, status) VALUES
+  ('Niamey', 330, 13.5136, 2.1098, true, 'proposed'),
+  ('Dosso', 330, 13.0464, 3.1937, true, 'proposed'),
+  ('Argungu', 330, 12.75, 4.5167, true, 'proposed'),
+  ('Parakuyi', 330, 9.3372, 2.6303, true, 'proposed'),
+  ('Kaiama', 330, 9.6087, 3.956, true, 'proposed'),
+  ('New Bussa', 330, 9.8833, 4.5167, true, 'proposed'),
+  ('Gazuoa', 330, 13.4, 7.7, true, 'proposed'),
+  ('Daura', 330, 13.0392, 8.3103, true, 'proposed'),
+  ('Sakete', 330, 6.7333, 2.6667, true, 'proposed'),
+  ('Dutse', 330, 11.7275, 9.3428, true, 'proposed'),
+  ('Azare', 330, 11.6774, 10.1943, true, 'proposed'),
+  ('Potiskum', 330, 11.7104, 11.0801, true, 'proposed'),
+  ('Damaturu', 330, 11.747, 11.9608, true, 'proposed'),
+  ('Buni Yadi', 330, 11.3403, 12.0206, true, 'proposed'),
+  ('Biu', 330, 10.6108, 12.1963, true, 'proposed'),
+  ('Yola', 330, 9.2035, 12.4954, true, 'proposed'),
+  ('Song', 330, 9.7784, 12.6027, true, 'proposed'),
+  ('Little Gombi', 330, 10.1058, 12.7864, true, 'proposed'),
+  ('Mayo Belwa', 330, 9.0578, 12.0433, true, 'proposed'),
+  ('Jalingo', 330, 8.8833, 11.3667, true, 'proposed'),
+  ('Wukari', 330, 7.8642, 9.7818, true, 'proposed'),
+  ('Mambila', 330, 6.95, 11.3167, true, 'proposed'),
+  ('Kubwa', 330, 9.15, 7.3333, true, 'proposed'),
+  ('Kukwaba', 330, 9.1, 7.4, true, 'proposed'),
+  ('Lugbe', 330, 8.9833, 7.3667, true, 'proposed'),
+  ('New Apo', 330, 9.0, 7.65, true, 'proposed'),
+  ('Lafia', 330, 8.4939, 8.5142, true, 'proposed'),
+  ('Obajana', 330, 7.9333, 6.3167, true, 'proposed'),
+  ('Ayangba', 330, 7.1739, 7.1683, true, 'proposed'),
+  ('Nkalagu', 330, 6.4667, 7.7833, true, 'proposed'),
+  ('Abakaliki', 330, 6.3249, 8.1137, true, 'proposed'),
+  ('Adiabo Trx', 330, 5.05, 8.3, true, 'proposed'),
+  ('Ogoja', 330, 6.6667, 8.8, true, 'proposed'),
+  ('Ikom', 330, 5.9667, 8.7167, true, 'proposed'),
+  ('Zaria', 330, 11.0667, 7.7, true, 'proposed'),
+  ('Rigasa', 330, 10.5667, 7.3833, true, 'proposed'),
+  ('Millennium City', 330, 10.55, 7.42, true, 'proposed');
+
+INSERT INTO grid_edge (from_node, to_node, km, status) VALUES
+  ('Niamey', 'Dosso', 141.0, 'proposed'),               -- map-labeled
+  ('Dosso', 'Birnin Kebbi', 127.27, 'proposed'),        -- haversine estimate
+  ('Sokoto', 'Argungu', 130.0, 'proposed'),             -- map-labeled
+  ('Argungu', 'Birnin Kebbi', 55.0, 'proposed'),        -- map-labeled
+  ('Parakuyi', 'Kaiama', 148.5, 'proposed'),            -- haversine estimate
+  ('Kaiama', 'New Bussa', 68.62, 'proposed'),           -- haversine estimate
+  ('New Bussa', 'Kainji', 0.47, 'proposed'),            -- map-labeled
+  ('Katsina', 'Daura', 72.0, 'proposed'),               -- map-labeled
+  ('Daura', 'Gazuoa', 72.0, 'proposed'),                -- map-labeled
+  ('Sakete', 'Ikeja West', 73.44, 'proposed'),          -- haversine estimate — "Sakete+WAPP backbone" tie point on the map
+  ('Zaria', 'Kaduna Town 132kV', 67.1, 'proposed'),     -- haversine estimate
+  ('Millennium City', 'Rigasa', 4.42, 'proposed'),      -- haversine estimate
+  ('Rigasa', 'Kaduna', 4.13, 'proposed'),               -- haversine estimate
+  ('Kaduna', 'Zaria', 61.37, 'proposed'),               -- haversine estimate
+  ('Dutse', 'Azare', 99.7, 'proposed'),                 -- map-labeled
+  ('Azare', 'Potiskum', 96.52, 'proposed'),             -- haversine estimate
+  ('Potiskum', 'Damaturu', 95.97, 'proposed'),          -- haversine estimate
+  ('Damaturu', 'Buni Yadi', 64.0, 'proposed'),          -- map-labeled
+  ('Damaturu', 'Biu', 135.0, 'proposed'),               -- map-labeled
+  ('Yola', 'Song', 50.0, 'proposed'),                   -- map-labeled
+  ('Song', 'Little Gombi', 113.0, 'proposed'),          -- map-labeled
+  ('Yola', 'Mayo Belwa', 52.21, 'proposed'),            -- haversine estimate
+  ('Mayo Belwa', 'Jalingo', 181.0, 'proposed'),         -- map-labeled
+  ('Jalingo', 'Wukari', 53.0, 'proposed'),              -- map-labeled
+  ('Wukari', 'Ogoja', 230.0, 'proposed'),               -- map-labeled
+  ('Wukari', 'Mambila', 125.0, 'proposed'),             -- map-labeled
+  ('Kubwa', 'Katampe', 18.36, 'proposed'),              -- haversine estimate
+  ('Katampe', 'Kukwaba', 24.0, 'proposed'),             -- map-labeled
+  ('Kukwaba', 'Lugbe', 13.48, 'proposed'),              -- haversine estimate
+  ('New Apo', 'Lafia', 172.0, 'proposed'),              -- map-labeled
+  ('Lafia', 'Apir/Makurdi', 53.0, 'proposed'),          -- map-labeled
+  ('Obajana', 'Ajaokuta', 56.11, 'proposed'),           -- haversine estimate
+  ('Ayangba', 'Geregu', 65.08, 'proposed'),             -- haversine estimate
+  ('New Haven', 'Nkalagu', 31.36, 'proposed'),          -- haversine estimate
+  ('Nkalagu', 'Abakaliki', 39.77, 'proposed'),          -- haversine estimate
+  ('Adiabo Trx', 'Ogoja', 188.08, 'proposed'),          -- haversine estimate
+  ('Ogoja', 'Ikom', 78.38, 'proposed');                 -- haversine estimate
 
 
 -- Bidirectional helper — every traversal query should read from this.
@@ -228,7 +374,8 @@ INSERT INTO genco (name, lat, lon, connection_node, capacity_note, commitment, t
   ('NDPHC Geregu', 7.4697, 6.6591, 'Geregu', '100 MW', 'FREE', 82.4),
   ('NNPC Okpai I', 5.7235, 6.6021, 'Okpai', '260 MW contracted vs 150 MW entitlement', 'over-committed', 73.0),
   ('Tetracore (Atakobo)', 6.76271, 4.12864, 'Ijebu Ode 132kV', '20 MW (ToP 8–10)', 'FREE', 77.0),
-  ('Voltworx (Tamburawa)', 11.87, 8.485, 'Tamburawa 132kV', '23 MW', 'earmarked KEDCO', 77.0);
+  ('Voltworx (Tamburawa)', 11.87, 8.485, 'Tamburawa 132kV', '23 MW', 'earmarked KEDCO', 77.0),
+  ('Maiduguri Emergency Power Project (MEPP)', 11.946083, 13.331139, 'Maiduguri 132kV', NULL, NULL, NULL);
 
 INSERT INTO disco (name, lat, lon, injection_node, contracted, upstream_source, last_mile_km) VALUES
   ('JED (Jos)', 9.8965, 8.8583, 'Makeri (Jos)', '18 MW delivered / 36 MW contracted', 'Mainstream', 0.0),

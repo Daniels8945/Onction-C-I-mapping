@@ -17,6 +17,18 @@ services:
       retries: 10
     networks: [mapping]
 
+  osrm:
+    image: osrm/osrm-backend
+    container_name: mapping-osrm
+    restart: unless-stopped
+    volumes:
+      - ./osrm-data:/data
+    command: osrm-routed --algorithm mld /data/nigeria-latest.osrm
+    networks: [mapping]
+    # No host port published — only the api container talks to this, over the
+    # internal network. Build the /data/*.osrm files first with
+    # server/scripts/build-osrm-data.sh, or this has nothing to serve.
+
   api:
     build: ./server
     container_name: mapping-api
@@ -25,6 +37,7 @@ services:
       DATABASE_URL: postgres://mapping:${MAPPING_DB_PASSWORD:-mapping_dev}@db:5432/mapping_grid
       PORT: 4000
       CORS_ORIGIN: ${MAPPING_CORS_ORIGIN:-*}
+      OSRM_URL: http://osrm:5000
     depends_on:
       db:
         condition: service_healthy

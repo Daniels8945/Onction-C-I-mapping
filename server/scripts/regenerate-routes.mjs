@@ -1,8 +1,8 @@
 // One-off: add the two newly-confirmed grid_edge corridors, then regenerate the
 // precomputed route/route_hop tables (182 rows) to match — see onction_grid_1.sql
 // section 6's own note: "Regenerate ... if the network changes."
-import { pool } from "./src/db.js";
-import { loadGraph, shortestPaths, buildPath, nodeSequenceToHops } from "./src/grid.js";
+import { pool } from "../src/db.js";
+import { loadGraph, shortestPaths, buildPath, nodeSequenceToHops } from "../src/grid.js";
 
 async function main() {
   await pool.query(`

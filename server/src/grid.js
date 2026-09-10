@@ -18,7 +18,10 @@ function haversineKm(lat1, lon1, lat2, lon2) {
 export async function loadGraph() {
   const [{ rows: substations }, { rows: edges }] = await Promise.all([
     pool.query("SELECT name, voltage_kv, lat::float AS lat, lon::float AS lon, is_injection FROM substation"),
-    pool.query("SELECT from_node, to_node, km::float AS km FROM grid_edge"),
+    // Only "existing" corridors are real, built lines — ongoing/proposed ones
+    // (e.g. the not-yet-built Kano-Katsina-Sokoto-Birnin Kebbi stretch) are
+    // stored for the map's reference layer but must never carry a route.
+    pool.query("SELECT from_node, to_node, km::float AS km FROM grid_edge WHERE status = 'existing'"),
   ]);
 
   const nodes = new Map(substations.map((s) => [s.name, s]));

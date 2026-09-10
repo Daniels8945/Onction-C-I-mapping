@@ -6,6 +6,7 @@ import {
   loadGraph, shortestPaths, buildPath, nodeSequenceToHops,
   nearestInjectionSubstation, lossPct, energyProjection,
 } from "./grid.js";
+import { roadRoute } from "./osrm.js";
 
 const app = express();
 app.use(cors({ origin: process.env.CORS_ORIGIN || "*" }));
@@ -17,12 +18,12 @@ app.get("/health", (_req, res) => res.json({ ok: true }));
 
 // ── Raw network + parties ────────────────────────────────────────────────
 app.get("/api/substations", async (_req, res, next) => {
-  try { res.json(await q("SELECT name, voltage_kv, lat::float AS lat, lon::float AS lon, is_injection FROM substation ORDER BY name")); }
+  try { res.json(await q("SELECT name, voltage_kv, lat::float AS lat, lon::float AS lon, is_injection, status FROM substation ORDER BY name")); }
   catch (e) { next(e); }
 });
 
 app.get("/api/grid-edges", async (_req, res, next) => {
-  try { res.json(await q("SELECT from_node, to_node, km::float AS km FROM grid_edge ORDER BY from_node")); }
+  try { res.json(await q("SELECT from_node, to_node, km::float AS km, status FROM grid_edge ORDER BY from_node")); }
   catch (e) { next(e); }
 });
 
@@ -73,9 +74,18 @@ async function resolveDestination({ dest, lat, lng, graph }) {
     return null;
   }
   if (lat != null && lng != null) {
+    // Straight-line pick for WHICH substation is nearest (cheap, and fine even
+    // for this — grid injection points are sparse enough that road-distance
+    // rarely changes which one is closest). Only the last-mile KM/geometry for
+    // that already-chosen substation gets upgraded to real road distance below.
     const nearest = nearestInjectionSubstation(graph, Number(lat), Number(lng));
     if (!nearest) return null;
-    return { label: `(${lat}, ${lng})`, kind: "point", injectionNode: nearest.node, lastMileKm: nearest.lastMileKm, destMw: null };
+    const subNode = graph.nodes.get(nearest.node);
+    let lastMileKm = nearest.lastMileKm; // haversine fallback if OSRM is unreachable
+    let lastMileGeometry = null;
+    const road = subNode ? await roadRoute([subNode.lon, subNode.lat], [Number(lng), Number(lat)]) : null;
+    if (road) { lastMileKm = Math.round(road.distanceKm * 10) / 10; lastMileGeometry = road.geometry; }
+    return { label: `(${lat}, ${lng})`, kind: "point", injectionNode: nearest.node, lastMileKm, lastMileGeometry, destMw: null };
   }
   return null;
 }
@@ -124,6 +134,7 @@ async function computeRouteFor({ gencoName, destination, lossModelCode, atccCode
     injection_node: dest.injectionNode,
     routed_km: Math.round(routedKm * 10) / 10,
     last_mile_km: lastMileKm,
+    last_mile_geometry: dest.lastMileGeometry || null, // [lon,lat] road path, only set when OSRM resolved it
     total_km: Math.round(totalKm * 10) / 10,
     hop_count: hops.length,
     hops,
