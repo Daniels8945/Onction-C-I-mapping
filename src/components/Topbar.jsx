@@ -1,23 +1,39 @@
 import { AnimatePresence, motion } from "motion/react";
-import { Lightning, MagnifyingGlass, DownloadSimple, Moon, Sun } from "@phosphor-icons/react";
+import { Lightning, Crosshair, DownloadSimple, Moon, Sun } from "@phosphor-icons/react";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
 import HelpDialog from "@/components/HelpDialog";
+import { FEEDER_SNAPSHOT, snapshotTotals } from "@/data/feederSnapshot";
+import { availabilityOf } from "@/features/explore/siteScan";
 
-function KPI({ value, label }) {
-  return (
-    <div className="flex flex-col items-center px-3">
+function KPI({ value, label, hint }) {
+  const body = (
+    <div className="flex flex-col items-center px-3 cursor-default">
       <span className="text-sm font-mono font-bold text-primary leading-none tabular-nums">{value}</span>
       <span className="text-[9px] text-muted-foreground uppercase tracking-wider mt-0.5">{label}</span>
     </div>
   );
+  if (!hint) return body;
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>{body}</TooltipTrigger>
+      <TooltipContent className="max-w-[240px] font-normal">{hint}</TooltipContent>
+    </Tooltip>
+  );
 }
 
-export default function Topbar({
-  mode, onModeChange, onNearestGenco, onClear, onExport,
-  visibleCount, pinCount, ciCount, isDark, onThemeToggle,
-}) {
+const IS_MAC = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform);
+
+export default function Topbar({ onExplore, scanArmed, onExport, gridParties, isDark, onThemeToggle }) {
+  // Decision numbers, not layer counts: how much demand Onction is serving,
+  // how much generation is actually free to sell, and how the grid is doing.
+  const demandMw = gridParties.offtakers.reduce((a, o) => a + (o.capacity_mw || 0), 0);
+  const freeGencos = gridParties.gencos.filter(g => availabilityOf(g.commitment).key === "available").length;
+  const feeders = snapshotTotals();
+  const feedersOnPct = Math.round((100 * feeders.online) / feeders.feeders);
+  const snapAt = new Date(FEEDER_SNAPSHOT.capturedAt).toLocaleString("en-NG", { dateStyle: "medium", timeStyle: "short" });
+
   return (
     <div className="flex items-center gap-1 px-3 h-12 border-b border-border bg-card flex-shrink-0 z-20">
       {/* Brand */}
@@ -35,20 +51,35 @@ export default function Topbar({
 
       {/* KPIs */}
       <div className="hidden md:flex items-center">
-        <KPI value={String(ciCount)}      label="C&I Sites" />
+        <KPI value={gridParties.offtakers.length ? `${demandMw} MW` : "—"} label="Offtaker demand"
+             hint={`Contracted capacity across Onction's ${gridParties.offtakers.length} offtakers.`} />
         <Separator orientation="vertical" className="h-5" />
-        <KPI value={String(visibleCount)} label="Visible" />
+        <KPI value={gridParties.gencos.length ? `${freeGencos}/${gridParties.gencos.length}` : "—"} label="GenCos free"
+             hint="Onction-engaged GenCos with capacity not yet committed elsewhere." />
         <Separator orientation="vertical" className="h-5" />
-        <KPI value={String(pinCount)}     label="Pins" />
+        <KPI value={`${feedersOnPct}%`} label="Feeders on"
+             hint={`${feeders.online} of ${feeders.feeders} metered DisCo feeders supplying power, ${feeders.shedding} shedding load with voltage present. Snapshot from ${snapAt} WAT; the live link comes next.`} />
       </div>
 
       <Separator orientation="vertical" className="h-6" />
 
       {/* Tools */}
       <div className="flex items-center gap-1.5 ml-auto">
-        <Button variant={mode === "explore" ? "default" : "secondary"} size="sm" onClick={() => onModeChange("explore")}>
-          <MagnifyingGlass className="h-3.5 w-3.5" /> Explore
-        </Button>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              size="sm" onClick={onExplore} data-testid="explore-button"
+              className={`explore-btn gap-1.5 pl-2.5 pr-2 font-semibold shadow-[0_0_18px_hsl(var(--primary)/0.35)] ${scanArmed ? "animate-pulse" : ""}`}
+            >
+              <Crosshair className="h-3.5 w-3.5" weight="bold" />
+              {scanArmed ? "Click the map…" : "Explore"}
+              <kbd className="ml-0.5 hidden rounded bg-black/15 px-1 py-px font-mono text-[10px] font-medium sm:inline">{IS_MAC ? "⌘K" : "Ctrl K"}</kbd>
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent className="max-w-[230px] font-normal">
+            Scan any site: its grid connection, best GenCo sources, DisCo supply and nearby demand.
+          </TooltipContent>
+        </Tooltip>
         <Button variant="secondary" size="sm" onClick={onExport}>
           <DownloadSimple className="h-3.5 w-3.5" /> Export
         </Button>

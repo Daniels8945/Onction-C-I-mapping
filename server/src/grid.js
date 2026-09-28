@@ -17,7 +17,7 @@ function haversineKm(lat1, lon1, lat2, lon2) {
 
 export async function loadGraph() {
   const [{ rows: substations }, { rows: edges }] = await Promise.all([
-    pool.query("SELECT name, voltage_kv, lat::float AS lat, lon::float AS lon, is_injection FROM substation"),
+    pool.query("SELECT name, voltage_kv, lat::float AS lat, lon::float AS lon, is_injection, status FROM substation"),
     // Only "existing" corridors are real, built lines — ongoing/proposed ones
     // (e.g. the not-yet-built Kano-Katsina-Sokoto-Birnin Kebbi stretch) are
     // stored for the map's reference layer but must never carry a route.
@@ -83,7 +83,9 @@ export function nodeSequenceToHops(graph, seq) {
 export function nearestInjectionSubstation(graph, lat, lon) {
   let best = null, bestKm = Infinity;
   for (const s of graph.nodes.values()) {
-    if (!s.is_injection) continue;
+    // Only built substations that some existing line reaches — a proposed
+    // one (e.g. Wukari) is often the nearest, but no GenCo can route to it.
+    if (!s.is_injection || s.status !== "existing" || !graph.adjacency.get(s.name)?.length) continue;
     const d = haversineKm(lat, lon, s.lat, s.lon);
     if (d < bestKm) { bestKm = d; best = s; }
   }

@@ -5,6 +5,7 @@ import { TX_LINE_STATUS, SUBSTATION_STATUS, GENCO_ICONS } from "../data/legend";
 import * as turf from "@turf/turf";
 import { computeBuffer, measureDistance, findNearestGenco } from "../utils/analysis";
 import { gridApi } from "../lib/gridApi";
+import { escapeHtml as esc } from "../lib/escapeHtml";
 
 const C = {
   accent: "#f5a623", green: "#00e5a0", red: "#e05252",
@@ -410,12 +411,12 @@ export default function useNigeriaMap({ isDark, BASEMAP } = {}) {
         ...(p.email   && p.email.includes("@")     ? [["Email",   p.email]]   : []),
       ]});
       if (modeRef.current === "buffer") { _handleBufferOnFeature(map, e.lngLat, p); return; }
-      const addrRow  = p.address && p.address !== "undefined" ? `<div class="nga-popup-row"><span class="nga-popup-key">Address</span><span class="nga-popup-val" style="max-width:150px;word-wrap:break-word">${p.address}</span></div>` : "";
-      const phoneRow = p.phone   && p.phone.length > 3        ? `<div class="nga-popup-row"><span class="nga-popup-key">Phone</span><span class="nga-popup-val">${p.phone}</span></div>` : "";
-      const emailRow = p.email   && p.email.includes("@")     ? `<div class="nga-popup-row"><span class="nga-popup-key">Email</span><span class="nga-popup-val" style="word-break:break-all;max-width:150px">${p.email}</span></div>` : "";
+      const addrRow  = p.address && p.address !== "undefined" ? `<div class="nga-popup-row"><span class="nga-popup-key">Address</span><span class="nga-popup-val" style="max-width:150px;word-wrap:break-word">${esc(p.address)}</span></div>` : "";
+      const phoneRow = p.phone   && p.phone.length > 3        ? `<div class="nga-popup-row"><span class="nga-popup-key">Phone</span><span class="nga-popup-val">${esc(p.phone)}</span></div>` : "";
+      const emailRow = p.email   && p.email.includes("@")     ? `<div class="nga-popup-row"><span class="nga-popup-key">Email</span><span class="nga-popup-val" style="word-break:break-all;max-width:150px">${esc(p.email)}</span></div>` : "";
       new maplibregl.Popup({ closeButton: true, maxWidth: "260px" })
         .setLngLat(e.lngLat)
-        .setHTML(`<div class="nga-popup"><p class="nga-popup-title">${p.name}</p><p class="nga-popup-sub">C&amp;I — ${p.sector} · ${p.state}</p>${addrRow}${phoneRow}${emailRow}</div>`)
+        .setHTML(`<div class="nga-popup"><p class="nga-popup-title">${esc(p.name)}</p><p class="nga-popup-sub">C&amp;I — ${esc(p.sector)} · ${esc(p.state)}</p>${addrRow}${phoneRow}${emailRow}</div>`)
         .addTo(map);
     });
     map.on("mouseenter", "ci-circle", () => { map.getCanvas().style.cursor = "pointer"; });
@@ -440,12 +441,12 @@ export default function useNigeriaMap({ isDark, BASEMAP } = {}) {
       if (p.email && p.email.includes("@")) rows.push(["Email", p.email]);
       setSelectedFeature({ name: p.name, type: "Licensed Electricity Trader", rows });
       if (modeRef.current === "buffer") { _handleBufferOnFeature(map, e.lngLat, p); return; }
-      const addrRow  = p.address ? `<div class="nga-popup-row"><span class="nga-popup-key">Address</span><span class="nga-popup-val" style="max-width:150px;word-wrap:break-word">${p.address}</span></div>` : "";
-      const phoneRow = p.phone && p.phone.length > 3 ? `<div class="nga-popup-row"><span class="nga-popup-key">Phone</span><span class="nga-popup-val">${p.phone}</span></div>` : "";
-      const emailRow = p.email && p.email.includes("@") ? `<div class="nga-popup-row"><span class="nga-popup-key">Email</span><span class="nga-popup-val" style="word-break:break-all;max-width:150px">${p.email}</span></div>` : "";
+      const addrRow  = p.address ? `<div class="nga-popup-row"><span class="nga-popup-key">Address</span><span class="nga-popup-val" style="max-width:150px;word-wrap:break-word">${esc(p.address)}</span></div>` : "";
+      const phoneRow = p.phone && p.phone.length > 3 ? `<div class="nga-popup-row"><span class="nga-popup-key">Phone</span><span class="nga-popup-val">${esc(p.phone)}</span></div>` : "";
+      const emailRow = p.email && p.email.includes("@") ? `<div class="nga-popup-row"><span class="nga-popup-key">Email</span><span class="nga-popup-val" style="word-break:break-all;max-width:150px">${esc(p.email)}</span></div>` : "";
       new maplibregl.Popup({ closeButton: true, maxWidth: "260px" })
         .setLngLat(e.lngLat)
-        .setHTML(`<div class="nga-popup"><p class="nga-popup-title">${p.name}</p><p class="nga-popup-sub">Licensed Electricity Trader</p>${addrRow}${phoneRow}${emailRow}</div>`)
+        .setHTML(`<div class="nga-popup"><p class="nga-popup-title">${esc(p.name)}</p><p class="nga-popup-sub">Licensed Electricity Trader</p>${addrRow}${phoneRow}${emailRow}</div>`)
         .addTo(map);
     });
     map.on("mouseenter", "traders-circle", () => { map.getCanvas().style.cursor = "pointer"; });
@@ -543,9 +544,17 @@ export default function useNigeriaMap({ isDark, BASEMAP } = {}) {
       });
       if (coords.length < 2) return;
 
-      let curveCoords = coords;
+      // A hop much shorter than its neighbours (New Haven→Ugwuaji is ~5 km,
+      // Lokoja→Ajaokuta ~27 km, both between 130–180 km hops) makes the
+      // bezier overshoot into a curl or U-turn. Drop such near-duplicate
+      // points before smoothing — the curve still passes right by them.
+      const MIN_HOP = 0.3; // degrees
+      const smoothable = coords.filter((c, i) =>
+        i === 0 || i === coords.length - 1 || Math.hypot(c[0] - coords[i - 1][0], c[1] - coords[i - 1][1]) >= MIN_HOP);
+
+      let curveCoords = smoothable;
       try {
-        curveCoords = turf.bezierSpline(turf.lineString(coords), { sharpness: 0.85 }).geometry.coordinates;
+        curveCoords = turf.bezierSpline(turf.lineString(smoothable), { sharpness: 0.85 }).geometry.coordinates;
       } catch {
         // degenerate loop (e.g. a repeated point) — fall back to the straight polyline
       }
@@ -854,12 +863,12 @@ export default function useNigeriaMap({ isDark, BASEMAP } = {}) {
     }
   }
   function _bufferHTML(title, gc, cap, names, dc = null) {
-    return `<strong style="color:#00e5a0">${title}</strong><br/><br/>GenCos inside: <strong style="color:#00e5a0">${gc}</strong><br/>Capacity: <strong style="color:#00e5a0">${cap} MW</strong>${dc != null ? `<br/>DISCOs: <strong style="color:#00e5a0">${dc}</strong>` : ""}${names.length ? "<br/><br/>" + names.map(n => `• ${n}`).join("<br/>") : ""}`;
+    return `<strong style="color:#00e5a0">${esc(title)}</strong><br/><br/>GenCos inside: <strong style="color:#00e5a0">${gc}</strong><br/>Capacity: <strong style="color:#00e5a0">${cap} MW</strong>${dc != null ? `<br/>DISCOs: <strong style="color:#00e5a0">${dc}</strong>` : ""}${names.length ? "<br/><br/>" + names.map(n => `• ${esc(n)}`).join("<br/>") : ""}`;
   }
   function _showPopup(map, lngLat, title, subtitle, rows) {
     new maplibregl.Popup({ closeButton: true })
       .setLngLat(lngLat)
-      .setHTML(`<div class="nga-popup"><p class="nga-popup-title">${title}</p><p class="nga-popup-sub">${subtitle}</p>${rows.map(([k, v]) => `<div class="nga-popup-row"><span class="nga-popup-key">${k}</span><span class="nga-popup-val">${v}</span></div>`).join("")}</div>`)
+      .setHTML(`<div class="nga-popup"><p class="nga-popup-title">${esc(title)}</p><p class="nga-popup-sub">${esc(subtitle)}</p>${rows.map(([k, v]) => `<div class="nga-popup-row"><span class="nga-popup-key">${esc(k)}</span><span class="nga-popup-val">${esc(v)}</span></div>`).join("")}</div>`)
       .addTo(map);
   }
 
@@ -870,7 +879,7 @@ export default function useNigeriaMap({ isDark, BASEMAP } = {}) {
     if (!hoverPopupRef.current) {
       hoverPopupRef.current = new maplibregl.Popup({ closeButton: false, closeOnClick: false, offset: 10 });
     }
-    hoverPopupRef.current.setLngLat(lngLat).setHTML(`<div style="font:600 11px sans-serif;">${text}</div>`).addTo(map);
+    hoverPopupRef.current.setLngLat(lngLat).setHTML(`<div style="font:600 11px sans-serif;">${esc(text)}</div>`).addTo(map);
   }
   function _hideHoverLabel() {
     hoverPopupRef.current?.remove();
@@ -928,7 +937,7 @@ export default function useNigeriaMap({ isDark, BASEMAP } = {}) {
     if (!feat) { setAnalysisText(`<span style="color:#f5a623">Click a feature first.</span>`); return; }
     const r = findNearestGenco(feat.geometry.coordinates);
     mapRef.current?.flyTo({ center: r.coordinates, zoom: 8 });
-    setAnalysisText(`<strong style="color:#00e5a0">Nearest GenCo:</strong> ${r.name}<br/>Capacity: ${r.capacity} MW<br/>Distance: ${r.distanceKm.toFixed(1)} km`);
+    setAnalysisText(`<strong style="color:#00e5a0">Nearest GenCo:</strong> ${esc(r.name)}<br/>Capacity: ${r.capacity} MW<br/>Distance: ${r.distanceKm.toFixed(1)} km`);
   }, []);
 
   const clearAnalysis = useCallback(() => {
@@ -946,7 +955,7 @@ export default function useNigeriaMap({ isDark, BASEMAP } = {}) {
     el.style.cssText = "width:20px;height:20px;border-radius:50% 50% 50% 0;background:#f5a623;transform:rotate(-45deg);border:2px solid rgba(245,166,35,0.4);box-shadow:0 2px 10px rgba(245,166,35,0.5);cursor:pointer;";
     const marker = new maplibregl.Marker({ element: el, anchor: "bottom" })
       .setLngLat([lng, lat])
-      .setPopup(new maplibregl.Popup({ offset: 20 }).setHTML(`<div class="nga-popup"><p class="nga-popup-title">📍 ${label}</p><div class="nga-popup-row"><span class="nga-popup-key">Lat</span><span class="nga-popup-val">${lat.toFixed(5)}°</span></div><div class="nga-popup-row"><span class="nga-popup-key">Lng</span><span class="nga-popup-val">${lng.toFixed(5)}°</span></div></div>`))
+      .setPopup(new maplibregl.Popup({ offset: 20 }).setHTML(`<div class="nga-popup"><p class="nga-popup-title">📍 ${esc(label)}</p><div class="nga-popup-row"><span class="nga-popup-key">Lat</span><span class="nga-popup-val">${lat.toFixed(5)}°</span></div><div class="nga-popup-row"><span class="nga-popup-key">Lng</span><span class="nga-popup-val">${lng.toFixed(5)}°</span></div></div>`))
       .addTo(map);
     pinMarkersRef.current[id] = marker;
     setPins(prev => [...prev, { id, label, lat, lng }]);
@@ -1196,8 +1205,11 @@ export default function useNigeriaMap({ isDark, BASEMAP } = {}) {
     if (g)  { mapRef.current.flyTo({ center: [g.lng,  g.lat],  zoom: 10 }); }
   }, []);
 
+  // For the Explore scanner (src/features/explore), which draws its own layers.
+  const getGridSubstations = useCallback(() => gridAtlasDataRef.current?.substations || [], []);
+
   return {
-    containerRef, mapReady, coords, zoom,
+    containerRef, mapRef, mapReady, coords, zoom, getGridSubstations,
     mode, changeMode,
     layerVis, toggleLayer,
     selectedFeature, analysisText, bufferCount,

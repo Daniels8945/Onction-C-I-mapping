@@ -14,7 +14,9 @@ app.use(express.json());
 
 const q = (text, params) => pool.query(text, params).then((r) => r.rows);
 
-app.get("/health", (_req, res) => res.json({ ok: true }));
+// Also under /api/ — the front Nginx only forwards /mapping/api/* here, so
+// that's the only health URL reachable from outside (DEPLOY.md step 6).
+app.get(["/health", "/api/health"], (_req, res) => res.json({ ok: true }));
 
 // ── Raw network + parties ────────────────────────────────────────────────
 app.get("/api/substations", async (_req, res, next) => {

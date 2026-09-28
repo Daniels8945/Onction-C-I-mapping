@@ -160,3 +160,43 @@ html.dark .maplibregl-ctrl-group button span { filter: invert(1); opacity: 0.6; 
 .scrollbar-thin::-webkit-scrollbar-thumb { background: var(--color-rim2); border-radius: 2px; }
 
 @keyframes spin { to { transform: rotate(360deg); } }
+
+/* ── Explore scanner ─────────────────────────────────────────────────────── */
+/* Crosshair while a scan is armed — !important beats the per-layer hover
+   handlers that set the canvas cursor inline. */
+.scan-armed .maplibregl-canvas { cursor: crosshair !important; }
+
+/* Radar pulse at the scanned point: three staggered ripples + a core dot. */
+.scan-pulse { position: relative; width: 18px; height: 18px; pointer-events: none; }
+.scan-pulse i {
+  position: absolute; inset: 3px; border-radius: 9999px;
+  background: hsl(var(--primary)); box-shadow: 0 0 0 2px #fff, 0 0 14px hsl(var(--primary));
+}
+.scan-pulse span {
+  position: absolute; inset: 0; border-radius: 9999px;
+  border: 2px solid hsl(var(--primary));
+  animation: scan-ripple 2.4s cubic-bezier(0.2, 0.6, 0.35, 1) infinite;
+}
+.scan-pulse span:nth-child(2) { animation-delay: 0.8s; }
+.scan-pulse span:nth-child(3) { animation-delay: 1.6s; }
+@keyframes scan-ripple {
+  from { transform: scale(1);  opacity: 0.9; }
+  to   { transform: scale(7);  opacity: 0; }
+}
+
+/* The Explore button's idle "sweep" — a slow sheen across the button. */
+.explore-btn { position: relative; overflow: hidden; isolation: isolate; }
+.explore-btn::after {
+  content: ""; position: absolute; inset: -40% auto -40% -60%; width: 40%; z-index: -1;
+  background: linear-gradient(100deg, transparent, rgba(255,255,255,0.45), transparent);
+  transform: skewX(-18deg); animation: explore-sheen 4.5s ease-in-out infinite;
+}
+@keyframes explore-sheen {
+  0%, 70% { left: -60%; }
+  100%    { left: 130%; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .scan-pulse span, .explore-btn::after { animation: none; }
+  .scan-pulse span { opacity: 0; }
+}

@@ -10,7 +10,7 @@ import { Button } from "@/components/ui/button";
 // a same-named place elsewhere) rank correctly.
 const NG_VIEWBOX = "2.6,13.9,14.7,4.2";
 
-function useDebouncedAddressSearch(query, enabled) {
+export function useDebouncedAddressSearch(query, enabled) {
   const [results, setResults] = useState([]);
   const [status, setStatus] = useState("idle"); // idle | loading | done | error
 
@@ -35,7 +35,7 @@ function useDebouncedAddressSearch(query, enabled) {
   return { results, status };
 }
 
-function shortLabel(result) {
+export function shortLabel(result) {
   const a = result.address || {};
   return a.amenity || a.shop || a.office || a.building || a.road || result.display_name.split(",")[0];
 }
