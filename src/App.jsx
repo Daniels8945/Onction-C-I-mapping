@@ -11,6 +11,7 @@ import LocationPanelHeader from "./components/LocationPanelHeader";
 import CommandPalette from "./features/explore/CommandPalette";
 import ScanCard       from "./features/explore/ScanCard";
 import useSiteScan    from "./features/explore/useSiteScan";
+import useFeederLive  from "./features/feeders/useFeederLive";
 import useNigeriaMap  from "./hooks/useNigeriaMap";
 import useDockablePanel from "./hooks/useDockablePanel";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -68,6 +69,7 @@ export default function App() {
 
   // ── Explore: command palette + site scanner ──────────────────────────────
   const [paletteOpen, setPaletteOpen] = useState(false);
+  const feeder = useFeederLive(); // live DisCo feeder data, or the labelled snapshot
   const locate = useCallback((name, kind) => {
     const list = kind === "substation" ? getGridSubstations() : gridParties.gencos;
     const hit = list.find(x => x.name === name);
@@ -99,6 +101,7 @@ export default function App() {
         scanArmed={scanner.armed}
         onExport={exportGeoJSON}
         gridParties={gridParties}
+        feeder={feeder}
         isDark={isDark}
         onThemeToggle={handleThemeToggle}
       />
@@ -210,6 +213,7 @@ export default function App() {
               <ScanCard
                 key={`${scanner.scan.lat},${scanner.scan.lng}`}
                 scan={scanner.scan}
+                feeder={feeder}
                 onClose={scanner.clear}
                 onRescan={() => { scanner.clear(); scanner.arm(); }}
                 onRoute={routeFromScan}

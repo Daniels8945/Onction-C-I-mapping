@@ -15,6 +15,7 @@ export const gridApi = {
   routes:      () => get("/api/routes"),
   lossModels:  () => get("/api/loss-models"),
   atccScenarios: () => get("/api/atcc-scenarios"),
+  feederSummary: () => get("/api/feeders/summary"),
   route: ({ genco, dest, lat, lng, lossModel, scenario, mw }) => {
     const p = new URLSearchParams({ genco });
     if (dest) p.set("dest", dest);

@@ -2,7 +2,7 @@
 // gathered from several sources of very different certainty. Each section of
 // the result carries a `source` so the card can badge it honestly:
 //   live      — computed now by the Onction grid API
-//   snapshot  — a frozen real reading (see data/feederSnapshot.js)
+//   live/delayed/snapshot for DisCo supply — see features/feeders/useFeederLive.js
 //   onction   — Onction's own deal data
 //   estimate  — a rule of thumb, not a measurement
 //
@@ -11,7 +11,6 @@
 import * as turf from "@turf/turf";
 import { gridApi } from "@/lib/gridApi";
 import { CI_CUSTOMERS } from "@/data";
-import { FEEDER_SNAPSHOT } from "@/data/feederSnapshot";
 
 // Which DisCo serves each state. State-level only: DisCo boundaries follow
 // feeders, not state lines, so border areas can differ.
@@ -118,14 +117,16 @@ export function nearestBuiltSubstation(lat, lng, substations) {
   return best;
 }
 
-export function discoSupply(ids) {
+// DisCo supply figures for the given DisCos from the current feeder data
+// (live or snapshot — whatever useFeederLive has).
+export function discoSupply(ids, feederData) {
   return ids
-    .map(id => ({ id, ...FEEDER_SNAPSHOT.discos[id] }))
+    .map(id => ({ id, ...feederData.discos[id] }))
     .filter(d => d.feeders)
     .map(d => ({
       ...d,
       onlinePct: Math.round((100 * d.online) / d.feeders),
-      availabilityPct: Math.round((100 * d.avgUptimeH) / FEEDER_SNAPSHOT.hoursElapsed),
+      availabilityPct: Math.min(100, Math.round((100 * d.avgUptimeH) / feederData.hoursElapsed)),
     }));
 }
 
@@ -147,7 +148,7 @@ export async function runSiteScan({ lat, lng, offtakers, substations, signal, on
       const { ids, note } = discosForState(loc.state);
       result.location = { status: "ready", ...loc };
       result.supply = ids.length
-        ? { status: "ready", source: "snapshot", discoIds: ids, note, discos: discoSupply(ids) }
+        ? { status: "ready", discoIds: ids, note }
         : { status: "empty", message: loc.country && loc.country !== "ng" ? "Outside Nigeria" : "DisCo not identified for this point" };
     })
     .catch(err => {
@@ -181,7 +182,7 @@ export async function runSiteScan({ lat, lng, offtakers, substations, signal, on
 
 // Plain-text summary for "Copy summary" — something a C&I manager can paste
 // straight into an email or chat.
-export function scanSummaryText(scan) {
+export function scanSummaryText(scan, feeder) {
   const lines = [];
   const where = scan.location?.place ? `${scan.location.place}${scan.location.state ? `, ${scan.location.state}` : ""}` : "Selected site";
   lines.push(`Onction site scan — ${where} (${scan.lat.toFixed(4)}°N, ${scan.lng.toFixed(4)}°E)`);
@@ -193,9 +194,10 @@ export function scanSummaryText(scan) {
       `  ${i + 1}. ${r.genco} — ${r.availability.label}, ${r.total_km} km, ${r.loss_pct}% loss` +
       (r.indicativeNgnKwh ? `, ~₦${r.indicativeNgnKwh.toFixed(1)}/kWh energy + losses` : "")));
   }
-  if (scan.supply?.status === "ready") {
-    scan.supply.discos.forEach(d => lines.push(
-      `${d.id} supply (snapshot ${FEEDER_SNAPSHOT.capturedAt}): ${d.online}/${d.feeders} feeders online, ~${d.availabilityPct}% availability today`));
+  if (scan.supply?.status === "ready" && feeder) {
+    const when = `${feeder.mode === "snapshot" ? "snapshot" : "live"} ${new Date(feeder.data.capturedAt).toISOString().slice(0, 16).replace("T", " ")} UTC`;
+    discoSupply(scan.supply.discoIds, feeder.data).forEach(d => lines.push(
+      `${d.id} supply (${when}): ${d.online}/${d.feeders} feeders online, ~${d.availabilityPct}% availability today, ${d.shedding} shedding`));
   }
   lines.push(`Solar resource (estimate): ~${scan.solar.kwhPerKwp} kWh/kWp/yr`);
   if (scan.demand) lines.push(`Within ${scan.demand.radiusKm} km: ${scan.demand.offtakers.length} Onction offtakers (${scan.demand.offtakerMw} MW), ${scan.demand.ciCount} C&I anchor loads`);

@@ -5,17 +5,24 @@ import {
 } from "@phosphor-icons/react";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
-import { FEEDER_SNAPSHOT } from "@/data/feederSnapshot";
+import { formatWat } from "@/features/feeders/useFeederLive";
 import { RANK_COLORS } from "./useSiteScan";
-import { scanSummaryText } from "./siteScan";
+import { scanSummaryText, discoSupply } from "./siteScan";
 
 // Provenance badges — every figure on the card says how much to trust it.
 const SOURCE_BADGE = {
   live:     { label: "Live",     cls: "bg-emerald-500/15 text-emerald-500", tip: "Computed now by the Onction grid routing API." },
-  snapshot: { label: "Snapshot", cls: "bg-sky-500/15 text-sky-500",         tip: `Real feeder readings frozen at ${new Date(FEEDER_SNAPSHOT.capturedAt).toLocaleString("en-NG", { dateStyle: "medium", timeStyle: "short" })} WAT — the live link comes next.` },
   onction:  { label: "Onction",  cls: "bg-primary/15 text-primary",         tip: "Onction's own engagement data." },
   estimate: { label: "Estimate", cls: "bg-muted text-muted-foreground",     tip: "A rule-of-thumb figure, not a measurement." },
 };
+
+// The DisCo supply badge depends on what useFeederLive currently has.
+function feederBadge(feeder) {
+  const at = formatWat(feeder.data.capturedAt);
+  if (feeder.mode === "live") return { label: "Live", cls: "bg-emerald-500/15 text-emerald-500", tip: `Metered feeder readings, updated every minute. Last reading ${at}.` };
+  if (feeder.mode === "delayed") return { label: "Delayed", cls: "bg-amber-500/15 text-amber-500", tip: `The live feed has fallen behind — last reading ${at}.` };
+  return { label: "Snapshot", cls: "bg-sky-500/15 text-sky-500", tip: `Live feed unavailable — showing real feeder readings frozen at ${at}.` };
+}
 
 const AVAIL_CLS = {
   available: "text-emerald-500 border-emerald-500/40",
@@ -25,8 +32,8 @@ const AVAIL_CLS = {
   unknown:   "text-muted-foreground border-border",
 };
 
-function Source({ kind }) {
-  const b = SOURCE_BADGE[kind];
+function Source({ kind, badge }) {
+  const b = badge || SOURCE_BADGE[kind];
   return (
     <Tooltip>
       <TooltipTrigger asChild>
@@ -37,7 +44,7 @@ function Source({ kind }) {
   );
 }
 
-function Section({ icon: Icon, title, source, children, delay = 0 }) {
+function Section({ icon: Icon, title, source, badge, children, delay = 0 }) {
   return (
     <motion.section
       initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.25, delay }}
@@ -46,7 +53,7 @@ function Section({ icon: Icon, title, source, children, delay = 0 }) {
       <div className="mb-2 flex items-center gap-1.5">
         <Icon className="h-3.5 w-3.5 text-muted-foreground" />
         <h3 className="flex-1 text-[9.5px] font-bold uppercase tracking-widest text-muted-foreground">{title}</h3>
-        {source && <Source kind={source} />}
+        {(source || badge) && <Source kind={source} badge={badge} />}
       </div>
       {children}
     </motion.section>
@@ -78,20 +85,39 @@ function Meter({ pct, tone }) {
   );
 }
 
+// Share of feeders online, hour by hour over the last 24h.
+function Sparkline({ points, tone }) {
+  if (!points || points.length < 2) return null;
+  const W = 72, H = 18;
+  const xy = points.map((p, i) => [(i / (points.length - 1)) * W, H - (Math.max(0, Math.min(100, p.onlinePct)) / 100) * H]);
+  const d = xy.map(([x, y], i) => `${i ? "L" : "M"}${x.toFixed(1)},${y.toFixed(1)}`).join(" ");
+  const [lx, ly] = xy[xy.length - 1];
+  return (
+    <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`} className="overflow-visible" role="img"
+         aria-label={`Feeders online over the last ${points.length} hours: from ${points[0].onlinePct}% to ${points[points.length - 1].onlinePct}%`}>
+      <path d={`${d} L${W},${H} L0,${H} Z`} fill={tone} opacity="0.15" />
+      <path d={d} fill="none" stroke={tone} strokeWidth="1.5" strokeLinejoin="round" strokeLinecap="round" />
+      <circle cx={lx} cy={ly} r="2" fill={tone} />
+    </svg>
+  );
+}
+
 // Beyond this, "nearest substation" stops meaning "easy connection".
 const FAR_FROM_GRID_KM = 50;
 
 const supplyTone = (pct) => (pct >= 60 ? "#10b981" : pct >= 35 ? "#f5a623" : "#ef4444");
 
-export default function ScanCard({ scan, onClose, onRescan, onRoute, onPin }) {
+export default function ScanCard({ scan, feeder, onClose, onRescan, onRoute, onPin }) {
   const [copied, setCopied] = useState(false);
   const { location: loc, sources: src, supply, demand, solar } = scan;
   const best = src?.status === "ready" ? src.top[0] : null;
+  // Recomputed every render, so an open card follows the minute-by-minute feed.
+  const discos = supply?.status === "ready" ? discoSupply(supply.discoIds, feeder.data) : [];
   const title = scan.label || (loc?.status === "ready" ? loc.place || "Unnamed area" : null);
 
   const copy = async () => {
     try {
-      await navigator.clipboard.writeText(scanSummaryText(scan));
+      await navigator.clipboard.writeText(scanSummaryText(scan, feeder));
       setCopied(true); setTimeout(() => setCopied(false), 1600);
     } catch { /* clipboard blocked — nothing useful to do */ }
   };
@@ -188,12 +214,12 @@ export default function ScanCard({ scan, onClose, onRescan, onRoute, onPin }) {
         </Section>
 
         {/* DisCo supply */}
-        <Section icon={Buildings} title="DisCo supply today" source={supply?.status === "ready" ? "snapshot" : null} delay={0.08}>
+        <Section icon={Buildings} title="DisCo supply today" badge={supply?.status === "ready" ? feederBadge(feeder) : null} delay={0.08}>
           {supply?.status === "loading" && <Skeleton lines={2} />}
           {(supply?.status === "error" || supply?.status === "empty") && <Problem>{supply.message}</Problem>}
           {supply?.status === "ready" && (
             <div className="space-y-2.5">
-              {supply.discos.map(d => (
+              {discos.map(d => (
                 <div key={d.id}>
                   <div className="mb-1 flex items-baseline justify-between">
                     <span className="text-[12px] font-semibold text-foreground">{d.id}</span>
@@ -201,15 +227,18 @@ export default function ScanCard({ scan, onClose, onRescan, onRoute, onPin }) {
                       <span className="text-foreground">{d.online}</span>/{d.feeders} feeders on
                     </span>
                   </div>
-                  <Meter pct={d.availabilityPct} tone={supplyTone(d.availabilityPct)} />
+                  <div className="flex items-center gap-2.5">
+                    <div className="flex-1"><Meter pct={d.availabilityPct} tone={supplyTone(d.availabilityPct)} /></div>
+                    <Sparkline points={d.trend} tone={supplyTone(d.availabilityPct)} />
+                  </div>
                   <p className="mt-1 text-[10px] text-muted-foreground">
                     ~{d.availabilityPct}% availability today · {d.shedding} shedding now · dedicated {d.dedicatedOnline}/{d.dedicated} on
                   </p>
                 </div>
               ))}
               {supply.note && <p className="text-[9.5px] text-muted-foreground/80">{supply.note}</p>}
-              {supply.discoIds.some(id => !supply.discos.find(d => d.id === id)) && (
-                <p className="text-[9.5px] text-muted-foreground/80">No metered feeders for {supply.discoIds.filter(id => !supply.discos.find(d => d.id === id)).join(", ")}.</p>
+              {supply.discoIds.some(id => !discos.find(d => d.id === id)) && (
+                <p className="text-[9.5px] text-muted-foreground/80">No metered feeders for {supply.discoIds.filter(id => !discos.find(d => d.id === id)).join(", ")}.</p>
               )}
             </div>
           )}

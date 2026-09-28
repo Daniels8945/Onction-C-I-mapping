@@ -4,13 +4,16 @@ import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
 import HelpDialog from "@/components/HelpDialog";
-import { FEEDER_SNAPSHOT, snapshotTotals } from "@/data/feederSnapshot";
+import { feederTotals, formatWat } from "@/features/feeders/useFeederLive";
 import { availabilityOf } from "@/features/explore/siteScan";
 
-function KPI({ value, label, hint }) {
+function KPI({ value, label, hint, dot }) {
   const body = (
     <div className="flex flex-col items-center px-3 cursor-default">
-      <span className="text-sm font-mono font-bold text-primary leading-none tabular-nums">{value}</span>
+      <span className="flex items-center gap-1.5 text-sm font-mono font-bold text-primary leading-none tabular-nums">
+        {dot && <span className={`h-1.5 w-1.5 rounded-full ${dot}`} />}
+        {value}
+      </span>
       <span className="text-[9px] text-muted-foreground uppercase tracking-wider mt-0.5">{label}</span>
     </div>
   );
@@ -25,14 +28,16 @@ function KPI({ value, label, hint }) {
 
 const IS_MAC = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform);
 
-export default function Topbar({ onExplore, scanArmed, onExport, gridParties, isDark, onThemeToggle }) {
+const FEED_DOT = { live: "bg-emerald-500 animate-pulse", delayed: "bg-amber-500", snapshot: "bg-sky-500" };
+const FEED_WORD = { live: "Live", delayed: "Delayed — last reading", snapshot: "Snapshot from" };
+
+export default function Topbar({ onExplore, scanArmed, onExport, gridParties, feeder, isDark, onThemeToggle }) {
   // Decision numbers, not layer counts: how much demand Onction is serving,
   // how much generation is actually free to sell, and how the grid is doing.
   const demandMw = gridParties.offtakers.reduce((a, o) => a + (o.capacity_mw || 0), 0);
   const freeGencos = gridParties.gencos.filter(g => availabilityOf(g.commitment).key === "available").length;
-  const feeders = snapshotTotals();
-  const feedersOnPct = Math.round((100 * feeders.online) / feeders.feeders);
-  const snapAt = new Date(FEEDER_SNAPSHOT.capturedAt).toLocaleString("en-NG", { dateStyle: "medium", timeStyle: "short" });
+  const feeders = feederTotals(feeder.data);
+  const feedersOnPct = feeders.feeders ? Math.round((100 * feeders.online) / feeders.feeders) : 0;
 
   return (
     <div className="flex items-center gap-1 px-3 h-12 border-b border-border bg-card flex-shrink-0 z-20">
@@ -57,8 +62,8 @@ export default function Topbar({ onExplore, scanArmed, onExport, gridParties, is
         <KPI value={gridParties.gencos.length ? `${freeGencos}/${gridParties.gencos.length}` : "—"} label="GenCos free"
              hint="Onction-engaged GenCos with capacity not yet committed elsewhere." />
         <Separator orientation="vertical" className="h-5" />
-        <KPI value={`${feedersOnPct}%`} label="Feeders on"
-             hint={`${feeders.online} of ${feeders.feeders} metered DisCo feeders supplying power, ${feeders.shedding} shedding load with voltage present. Snapshot from ${snapAt} WAT; the live link comes next.`} />
+        <KPI value={`${feedersOnPct}%`} label="Feeders on" dot={FEED_DOT[feeder.mode]}
+             hint={`${feeders.online} of ${feeders.feeders} metered DisCo feeders supplying power (${feeders.liveMw} MW), ${feeders.shedding} shedding load with voltage present. ${FEED_WORD[feeder.mode]} ${formatWat(feeder.data.capturedAt)}.`} />
       </div>
 
       <Separator orientation="vertical" className="h-6" />

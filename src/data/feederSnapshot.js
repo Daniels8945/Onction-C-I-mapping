@@ -1,8 +1,8 @@
 // Per-DisCo supply snapshot from the live feeder-compliance API, as recorded
 // by the poller (server/src/poller.js) — one real poll, frozen here so the
-// Explore Scanner can demo the "grid supply" figures before the frontend is
-// wired to the live feed. Replace with an API call once /api/feeders is
-// built; anything reading this must label it as a snapshot.
+// app still has real figures when the live feed (/api/feeders/summary) is
+// unavailable — see features/feeders/useFeederLive.js, which falls back to
+// it and labels it as a snapshot.
 //
 // Field meanings are inferred (the provider publishes no docs): power in MW,
 // uptime = hours online so far today (resets at midnight WAT).
@@ -26,9 +26,3 @@ export const FEEDER_SNAPSHOT = {
     YEDC:   { feeders: 18,  online: 4,   shedding: 0,  liveMw: 3.5,   avgUptimeH: 4.2,  dedicated: 5,  dedicatedOnline: 1 },
   },
 };
-
-export function snapshotTotals() {
-  const all = Object.values(FEEDER_SNAPSHOT.discos);
-  const sum = (k) => all.reduce((a, d) => a + d[k], 0);
-  return { feeders: sum("feeders"), online: sum("online"), shedding: sum("shedding"), liveMw: sum("liveMw") };
-}

@@ -7,6 +7,7 @@ import {
   nearestInjectionSubstation, lossPct, energyProjection,
 } from "./grid.js";
 import { roadRoute } from "./osrm.js";
+import { feederRouter } from "./feeders/routes.js";
 
 const app = express();
 app.use(cors({ origin: process.env.CORS_ORIGIN || "*" }));
@@ -192,6 +193,9 @@ app.get("/api/best-source", async (req, res, next) => {
     res.json({ destination: destination.label, results });
   } catch (e) { next(e); }
 });
+
+// Live DisCo feeder data recorded by the poller.
+app.use(feederRouter);
 
 app.use((err, _req, res, _next) => {
   console.error(err);
