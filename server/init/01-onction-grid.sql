@@ -249,29 +249,43 @@ INSERT INTO grid_edge (from_node, to_node, km, status) VALUES
 -- as the rest of this file. All status='proposed', so none of this
 -- participates in routing (see loadGraph()'s WHERE clause) — it's reference-
 -- layer only until any of it is actually built.
+--
+-- 2026-09-21 update: 17 of these coordinates were replaced with ground-
+-- control points the user placed in QGIS directly on the source raster
+-- (matched to a real basemap, not typed by hand) — Niamey, Dosso, Kaiama,
+-- Parakuyi, New Bussa, Jalingo, Yola, Wukari, Little Gombi, Biu, Damaturu,
+-- Potiskum, Azare, Dutse, Daura, Gazuoa, Zaria. Trying to fit one global
+-- affine transform across all 25 submitted GCPs came out to ~55km RMSE —
+-- too poor to use directly, confirming this source map's own geometry is too
+-- warped for a single linear georeference — so each of the 17 above was
+-- instead matched and applied individually, only where the GCP's real-world
+-- coordinate landed within ~35km of the existing estimate for that specific
+-- named node (a strong same-place signal). The other 8 submitted GCPs didn't
+-- land near any node in this file with any confidence, so they were left
+-- unused rather than guessed onto the wrong name.
 INSERT INTO substation (name, voltage_kv, lat, lon, is_injection, status) VALUES
-  ('Niamey', 330, 13.5136, 2.1098, true, 'proposed'),
-  ('Dosso', 330, 13.0464, 3.1937, true, 'proposed'),
+  ('Niamey', 330, 13.517104, 2.113085, true, 'proposed'),
+  ('Dosso', 330, 13.069955, 2.880751, true, 'proposed'),
   ('Argungu', 330, 12.75, 4.5167, true, 'proposed'),
-  ('Parakuyi', 330, 9.3372, 2.6303, true, 'proposed'),
-  ('Kaiama', 330, 9.6087, 3.956, true, 'proposed'),
-  ('New Bussa', 330, 9.8833, 4.5167, true, 'proposed'),
-  ('Gazuoa', 330, 13.4, 7.7, true, 'proposed'),
-  ('Daura', 330, 13.0392, 8.3103, true, 'proposed'),
+  ('Parakuyi', 330, 9.34088, 2.626686, true, 'proposed'),
+  ('Kaiama', 330, 9.584434, 3.934825, true, 'proposed'),
+  ('New Bussa', 330, 9.883299, 4.508739, true, 'proposed'),
+  ('Gazuoa', 330, 13.526882, 7.912297, true, 'proposed'),
+  ('Daura', 330, 13.035754, 8.314522, true, 'proposed'),
   ('Sakete', 330, 6.7333, 2.6667, true, 'proposed'),
-  ('Dutse', 330, 11.7275, 9.3428, true, 'proposed'),
-  ('Azare', 330, 11.6774, 10.1943, true, 'proposed'),
-  ('Potiskum', 330, 11.7104, 11.0801, true, 'proposed'),
-  ('Damaturu', 330, 11.747, 11.9608, true, 'proposed'),
+  ('Dutse', 330, 11.813471, 9.260968, true, 'proposed'),
+  ('Azare', 330, 11.674088, 10.191683, true, 'proposed'),
+  ('Potiskum', 330, 11.710189, 11.071587, true, 'proposed'),
+  ('Damaturu', 330, 11.740937, 11.959765, true, 'proposed'),
   ('Buni Yadi', 330, 11.3403, 12.0206, true, 'proposed'),
-  ('Biu', 330, 10.6108, 12.1963, true, 'proposed'),
-  ('Yola', 330, 9.2035, 12.4954, true, 'proposed'),
+  ('Biu', 330, 10.8404, 12.029934, true, 'proposed'),
+  ('Yola', 330, 9.207151, 12.479065, true, 'proposed'),
   ('Song', 330, 9.7784, 12.6027, true, 'proposed'),
-  ('Little Gombi', 330, 10.1058, 12.7864, true, 'proposed'),
+  ('Little Gombi', 330, 10.165135, 12.736367, true, 'proposed'),
   ('Mayo Belwa', 330, 9.0578, 12.0433, true, 'proposed'),
-  ('Jalingo', 330, 8.8833, 11.3667, true, 'proposed'),
-  ('Wukari', 330, 7.8642, 9.7818, true, 'proposed'),
-  ('Mambila', 330, 6.95, 11.3167, true, 'proposed'),
+  ('Jalingo', 330, 8.892515, 11.360054, true, 'proposed'),
+  ('Wukari', 330, 7.878188, 9.77812, true, 'proposed'),
+  ('Mambila', 330, 6.931395, 11.224802, true, 'proposed'),
   ('Kubwa', 330, 9.15, 7.3333, true, 'proposed'),
   ('Kukwaba', 330, 9.1, 7.4, true, 'proposed'),
   ('Lugbe', 330, 8.9833, 7.3667, true, 'proposed'),
@@ -282,11 +296,29 @@ INSERT INTO substation (name, voltage_kv, lat, lon, is_injection, status) VALUES
   ('Nkalagu', 330, 6.4667, 7.7833, true, 'proposed'),
   ('Abakaliki', 330, 6.3249, 8.1137, true, 'proposed'),
   ('Adiabo Trx', 330, 5.05, 8.3, true, 'proposed'),
-  ('Ogoja', 330, 6.6667, 8.8, true, 'proposed'),
+  ('Ogoja', 330, 6.526485, 8.688506, true, 'proposed'),
   ('Ikom', 330, 5.9667, 8.7167, true, 'proposed'),
-  ('Zaria', 330, 11.0667, 7.7, true, 'proposed'),
+  ('Zaria', 330, 11.116449, 7.708789, true, 'proposed'),
   ('Rigasa', 330, 10.5667, 7.3833, true, 'proposed'),
   ('Millennium City', 330, 10.55, 7.42, true, 'proposed');
+
+-- 2026-09-25: 8 more proposed 330/132kV points the user placed in QGIS that
+-- don't match anything already in this file (checked against all 98 existing
+-- rows, not just the proposed set — the closest existing match on any of
+-- these was 54km away). Real names weren't assigned yet at the time of this
+-- placement ("place the points for now, sort out the names later") — each
+-- placeholder keeps the point's row number from the source .points file so
+-- it can be renamed later without re-matching by coordinate. No grid_edge
+-- rows yet either, since these aren't connected to anything until named.
+INSERT INTO substation (name, voltage_kv, lat, lon, is_injection, status) VALUES
+  ('Unnamed Proposed 03', 330, 11.563786, 4.372702, true, 'proposed'),
+  ('Unnamed Proposed 17', 330, 12.013185, 8.703859, true, 'proposed'),
+  ('Unnamed Proposed 18', 330, 12.736809, 8.285901, true, 'proposed'),
+  ('Unnamed Proposed 21', 330, 7.621250, 5.222647, true, 'proposed'),
+  ('Unnamed Proposed 22', 330, 9.806547, 6.151992, true, 'proposed'),
+  ('Unnamed Proposed 37', 330, 9.958100, 10.428924, true, 'proposed'),
+  ('Unnamed Proposed 38', 330, 6.218947, 7.077733, true, 'proposed'),
+  ('Unnamed Proposed 39', 330, 4.932770, 6.276679, true, 'proposed');
 
 INSERT INTO grid_edge (from_node, to_node, km, status) VALUES
   ('Niamey', 'Dosso', 141.0, 'proposed'),               -- map-labeled
