@@ -135,7 +135,7 @@ export default function useSiteScan({ mapRef, mapReady, locate, offtakers, getSu
     const bounds = pts.reduce((b, p) => b.extend(p), new maplibregl.LngLatBounds(pts[0], pts[0]));
     const narrow = window.matchMedia("(max-width: 639px)").matches;
     map.fitBounds(bounds, {
-      padding: narrow ? { top: 60, bottom: 280, left: 30, right: 30 } : { top: 60, bottom: 60, left: 380, right: 60 },
+      padding: narrow ? { top: 60, bottom: 280, left: 30, right: 30 } : { top: 60, bottom: 60, left: 380, right: 280 },
       maxZoom: 10, duration: 1200,
     });
   }, [mapRef, locate]);

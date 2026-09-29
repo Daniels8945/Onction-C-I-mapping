@@ -132,13 +132,14 @@ export function discoSupply(ids, feederData) {
 
 // Runs every lookup for a point in parallel, reporting each section as it
 // lands via onUpdate(partial) so the card fills in progressively.
-export async function runSiteScan({ lat, lng, offtakers, substations, signal, onUpdate }) {
+// withSources=false skips the GenCo ranking (a route's end-points don't need it).
+export async function runSiteScan({ lat, lng, offtakers, substations, signal, onUpdate, withSources = true }) {
   const result = {
     lat, lng,
     solar: { source: "estimate", kwhPerKwp: solarYieldEstimate(lat) },
     demand: { source: "onction", ...nearbyDemand(lat, lng, offtakers) },
     location: { status: "loading" },
-    sources: { status: "loading" },
+    sources: withSources ? { status: "loading" } : { status: "skipped" },
     supply: { status: "loading" },
   };
   onUpdate({ ...result });
@@ -158,7 +159,7 @@ export async function runSiteScan({ lat, lng, offtakers, substations, signal, on
     })
     .finally(() => { if (!signal?.aborted) onUpdate({ ...result }); });
 
-  const sources = gridApi.bestSource({ lat, lng })
+  const sources = !withSources ? Promise.resolve() : gridApi.bestSource({ lat, lng })
     .then(({ results }) => {
       const ranked = rankSources(results);
       const best = ranked[0];

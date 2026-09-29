@@ -93,12 +93,36 @@ async function resolveDestination({ dest, lat, lng, graph }) {
   return null;
 }
 
-async function computeRouteFor({ gencoName, destination, lossModelCode, atccCode, destMwOverride, graph }) {
-  const [genco] = await q(
-    "SELECT name, connection_node, commitment, tariff_ngn_kwh::float AS tariff_ngn_kwh, capacity_note FROM genco WHERE name = $1",
-    [gencoName]
-  );
-  if (!genco) return { error: `Unknown GenCo: ${gencoName}` };
+// Where the power enters the grid: a GenCo's own connection node, or — for
+// any other point (a C&I site, an address, a plant Onction hasn't engaged) —
+// the nearest built injection substation, reached over a "first mile".
+async function resolveSource({ gencoName, fromLat, fromLng, graph }) {
+  if (gencoName) {
+    const [genco] = await q(
+      "SELECT name, connection_node, commitment, tariff_ngn_kwh::float AS tariff_ngn_kwh, capacity_note FROM genco WHERE name = $1",
+      [gencoName]
+    );
+    if (!genco) return { error: `Unknown GenCo: ${gencoName}` };
+    return { ...genco, kind: "genco", firstMileKm: 0, firstMileGeometry: null };
+  }
+  if (fromLat != null && fromLng != null) {
+    const nearest = nearestInjectionSubstation(graph, Number(fromLat), Number(fromLng));
+    if (!nearest) return { error: "No built substation near the starting point" };
+    const subNode = graph.nodes.get(nearest.node);
+    let firstMileKm = nearest.lastMileKm, firstMileGeometry = null;
+    const road = subNode ? await roadRoute([Number(fromLng), Number(fromLat)], [subNode.lon, subNode.lat]) : null;
+    if (road) { firstMileKm = Math.round(road.distanceKm * 10) / 10; firstMileGeometry = road.geometry; }
+    return {
+      name: `(${fromLat}, ${fromLng})`, kind: "point", connection_node: nearest.node,
+      commitment: null, tariff_ngn_kwh: null, capacity_note: null, firstMileKm, firstMileGeometry,
+    };
+  }
+  return { error: "Provide genco=<name> or fromLat & fromLng" };
+}
+
+async function computeRouteFor({ gencoName, source, destination, lossModelCode, atccCode, destMwOverride, graph }) {
+  const genco = source || await resolveSource({ gencoName, graph });
+  if (genco.error) return genco;
 
   const dest = destination;
   if (!dest) return { error: "Could not resolve destination" };
@@ -117,7 +141,7 @@ async function computeRouteFor({ gencoName, destination, lossModelCode, atccCode
   );
   const loss_pct = lossPct(routedKm, lossModel);
   const lastMileKm = dest.lastMileKm ?? 0;
-  const totalKm = routedKm + lastMileKm;
+  const totalKm = genco.firstMileKm + routedKm + lastMileKm;
 
   let atcc = null, projection = null;
   const destMw = destMwOverride ?? dest.destMw;
@@ -130,7 +154,12 @@ async function computeRouteFor({ gencoName, destination, lossModelCode, atccCode
 
   return {
     genco: genco.name,
+    source_kind: genco.kind,                 // "genco" | "point"
+    source_node: genco.connection_node,
+    first_mile_km: genco.firstMileKm,        // 0 for a GenCo (it sits on its node)
+    first_mile_geometry: genco.firstMileGeometry,
     commitment: genco.commitment,
+    capacity_note: genco.capacity_note,
     tariff_ngn_kwh: genco.tariff_ngn_kwh,
     destination: dest.label,
     dest_kind: dest.kind,
@@ -151,15 +180,18 @@ async function computeRouteFor({ gencoName, destination, lossModelCode, atccCode
 
 // GET /api/route?genco=NDPHC%20Geregu&dest=GeePee&lossModel=base&scenario=dedicated
 // GET /api/route?genco=NDPHC%20Geregu&lat=6.68&lng=3.235&mw=6&lossModel=base
+// GET /api/route?fromLat=6.45&fromLng=3.39&dest=KEDCO   (from any point: nearest built substation + first mile)
 app.get("/api/route", async (req, res, next) => {
   try {
-    const { genco, dest, lat, lng, lossModel, scenario, mw } = req.query;
-    if (!genco) return res.status(400).json({ error: "genco is required" });
+    const { genco, fromLat, fromLng, dest, lat, lng, lossModel, scenario, mw } = req.query;
+    if (!genco && (fromLat == null || fromLng == null)) return res.status(400).json({ error: "Provide genco=<name> or fromLat & fromLng" });
     const graph = await loadGraph();
+    const source = await resolveSource({ gencoName: genco, fromLat, fromLng, graph });
+    if (source.error) return res.status(404).json(source);
     const destination = await resolveDestination({ dest, lat, lng, graph });
     if (!destination) return res.status(400).json({ error: "Provide dest=<offtaker/disco name> or lat & lng" });
     const result = await computeRouteFor({
-      gencoName: genco, destination, lossModelCode: lossModel, atccCode: scenario,
+      source, destination, lossModelCode: lossModel, atccCode: scenario,
       destMwOverride: mw ? Number(mw) : undefined, graph,
     });
     if (result.error) return res.status(404).json(result);

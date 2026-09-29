@@ -16,8 +16,13 @@ export const gridApi = {
   lossModels:  () => get("/api/loss-models"),
   atccScenarios: () => get("/api/atcc-scenarios"),
   feederSummary: () => get("/api/feeders/summary"),
-  route: ({ genco, dest, lat, lng, lossModel, scenario, mw }) => {
-    const p = new URLSearchParams({ genco });
+  // From a GenCo (genco) or any point (fromLat/fromLng); to a named
+  // offtaker/DisCo (dest) or any point (lat/lng).
+  route: ({ genco, fromLat, fromLng, dest, lat, lng, lossModel, scenario, mw }) => {
+    const p = new URLSearchParams();
+    if (genco) p.set("genco", genco);
+    if (fromLat != null) p.set("fromLat", fromLat);
+    if (fromLng != null) p.set("fromLng", fromLng);
     if (dest) p.set("dest", dest);
     if (lat != null) p.set("lat", lat);
     if (lng != null) p.set("lng", lng);

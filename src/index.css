@@ -196,6 +196,15 @@ html.dark .maplibregl-ctrl-group button span { filter: invert(1); opacity: 0.6; 
   100%    { left: 130%; }
 }
 
+/* A / B end markers for point-to-point routes. */
+.route-end-marker {
+  display: flex; align-items: center; justify-content: center;
+  width: 26px; height: 26px; border-radius: 9999px;
+  background: var(--end-color); color: #fff; font: 700 12px/1 system-ui, sans-serif;
+  border: 2.5px solid #fff; box-shadow: 0 0 0 4px color-mix(in srgb, var(--end-color) 35%, transparent), 0 4px 12px rgba(0,0,0,0.4);
+  pointer-events: none;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .scan-pulse span, .explore-btn::after { animation: none; }
   .scan-pulse span { opacity: 0; }

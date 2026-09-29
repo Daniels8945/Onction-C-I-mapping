@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import { MapPin, Crosshair } from "@phosphor-icons/react";
 import Topbar         from "./components/Topbar";
@@ -12,6 +12,9 @@ import CommandPalette from "./features/explore/CommandPalette";
 import ScanCard       from "./features/explore/ScanCard";
 import useSiteScan    from "./features/explore/useSiteScan";
 import useFeederLive  from "./features/feeders/useFeederLive";
+import usePointRoute  from "./features/explore/usePointRoute";
+import RouteCard      from "./features/explore/RouteCard";
+import { buildPlaceIndex } from "./features/explore/places";
 import useNigeriaMap  from "./hooks/useNigeriaMap";
 import useDockablePanel from "./hooks/useDockablePanel";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -77,6 +80,19 @@ export default function App() {
   }, [getGridSubstations, gridParties]);
   const scanner = useSiteScan({ mapRef, mapReady, locate, offtakers: gridParties.offtakers, getSubstations: getGridSubstations });
 
+  // Point-to-point routing (Explore → "A to B"). Only one Explore card is
+  // open at a time: starting a route closes the scan and vice versa.
+  const planner = usePointRoute({ mapRef, mapReady, getSubstations: getGridSubstations, offtakers: gridParties.offtakers });
+  const placeIndex = useMemo(
+    () => buildPlaceIndex({ gridParties, substations: gridStatus === "ready" ? getGridSubstations() : [], pins }),
+    [gridParties, gridStatus, getGridSubstations, pins]);
+  const startRoute = (from = null, to = null) => { scanner.clear(); scanner.disarm(); planner.start(from, to); };
+  const scanPlace = (lat, lng, label) => { planner.close(); scanner.scanAt(lat, lng, label); };
+  const scanSitePlace = () => {
+    const s = scanner.scan;
+    return s && { kind: "site", name: s.label || s.location?.place || `${s.lat.toFixed(3)}, ${s.lng.toFixed(3)}`, lat: s.lat, lng: s.lng };
+  };
+
   useEffect(() => {
     const onKey = (e) => {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") { e.preventDefault(); setPaletteOpen(o => !o); }
@@ -108,7 +124,7 @@ export default function App() {
       <CommandPalette
         open={paletteOpen} onOpenChange={setPaletteOpen}
         gridParties={gridParties} substations={gridStatus === "ready" ? getGridSubstations() : []} pins={pins}
-        onArm={scanner.arm} onScan={scanner.scanAt}
+        onArm={() => { planner.close(); scanner.arm(); }} onScan={scanPlace} onRoute={startRoute}
       />
 
       {/* Workspace */}
@@ -218,6 +234,18 @@ export default function App() {
                 onRescan={() => { scanner.clear(); scanner.arm(); }}
                 onRoute={routeFromScan}
                 onPin={() => addPin(scanner.scan.lng, scanner.scan.lat, scanner.scan.label || scanner.scan.location?.place || "Scanned site")}
+                onPlanRoute={() => startRoute(scanSitePlace(), null)}
+              />
+            )}
+          </AnimatePresence>
+
+          {/* Point-to-point route */}
+          <AnimatePresence>
+            {planner.open && (
+              <RouteCard
+                planner={planner} index={placeIndex} feeder={feeder}
+                onClose={planner.close}
+                onScan={(p) => scanPlace(p.lat, p.lng, p.name)}
               />
             )}
           </AnimatePresence>
