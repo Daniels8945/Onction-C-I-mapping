@@ -15,6 +15,9 @@ import useFeederLive  from "./features/feeders/useFeederLive";
 import usePointRoute  from "./features/explore/usePointRoute";
 import RouteCard      from "./features/explore/RouteCard";
 import { buildPlaceIndex } from "./features/explore/places";
+import useConnect     from "./features/connect/useConnect";
+import ConnectCard    from "./features/connect/ConnectCard";
+import CustomerSearch from "./features/connect/CustomerSearch";
 import useNigeriaMap  from "./hooks/useNigeriaMap";
 import useDockablePanel from "./hooks/useDockablePanel";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -86,8 +89,17 @@ export default function App() {
   const placeIndex = useMemo(
     () => buildPlaceIndex({ gridParties, substations: gridStatus === "ready" ? getGridSubstations() : [], pins }),
     [gridParties, gridStatus, getGridSubstations, pins]);
-  const startRoute = (from = null, to = null) => { scanner.clear(); scanner.disarm(); planner.start(from, to); };
-  const scanPlace = (lat, lng, label) => { planner.close(); scanner.scanAt(lat, lng, label); };
+  // Connect a customer — the central workflow: find them, see what
+  // infrastructure is near, visualise the connection, get an indication.
+  const connect = useConnect({ mapRef, mapReady });
+
+  const startRoute = (from = null, to = null) => { connect.close(); scanner.clear(); scanner.disarm(); planner.start(from, to); };
+  const scanPlace = (lat, lng, label) => { connect.close(); planner.close(); scanner.scanAt(lat, lng, label); };
+  const findCustomer = (place, opts) => { scanner.clear(); scanner.disarm(); planner.close(); connect.setCustomer(place, opts); };
+  const dropCustomerPin = () => { scanner.clear(); scanner.disarm(); planner.close(); connect.startDrop(); };
+  const customerPlace = () => connect.customer && {
+    kind: "site", name: connect.label || connect.customer.name || "Customer", lat: connect.customer.lat, lng: connect.customer.lng, state: connect.customer.state,
+  };
   const scanSitePlace = () => {
     const s = scanner.scan;
     return s && { kind: "site", name: s.label || s.location?.place || `${s.lat.toFixed(3)}, ${s.lng.toFixed(3)}`, lat: s.lat, lng: s.lng };
@@ -124,7 +136,7 @@ export default function App() {
       <CommandPalette
         open={paletteOpen} onOpenChange={setPaletteOpen}
         gridParties={gridParties} substations={gridStatus === "ready" ? getGridSubstations() : []} pins={pins}
-        onArm={() => { planner.close(); scanner.arm(); }} onScan={scanPlace} onRoute={startRoute}
+        onArm={() => { connect.close(); planner.close(); scanner.arm(); }} onScan={scanPlace} onRoute={startRoute}
       />
 
       {/* Workspace */}
@@ -235,6 +247,22 @@ export default function App() {
                 onRoute={routeFromScan}
                 onPin={() => addPin(scanner.scan.lng, scanner.scan.lat, scanner.scan.label || scanner.scan.location?.place || "Scanned site")}
                 onPlanRoute={() => startRoute(scanSitePlace(), null)}
+              />
+            )}
+          </AnimatePresence>
+
+          {/* Connect a customer: search bar + card */}
+          {mapReady && (
+            <CustomerSearch index={placeIndex} onSelect={findCustomer} onDropPin={dropCustomerPin} dropping={connect.dropping} />
+          )}
+          <AnimatePresence>
+            {connect.open && (
+              <ConnectCard
+                connect={connect}
+                onClose={connect.close}
+                onSources={() => { const p = customerPlace(); if (p) scanPlace(p.lat, p.lng, p.name); }}
+                onRoute={() => startRoute(null, customerPlace())}
+                onPin={() => { const p = customerPlace(); if (p) addPin(p.lng, p.lat, p.name); }}
               />
             )}
           </AnimatePresence>

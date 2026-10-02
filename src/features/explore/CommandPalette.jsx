@@ -4,7 +4,7 @@ import {
   MagnifyingGlass, Crosshair, Lightning, Buildings, Factory, Plug, MapPin, PushPin, CircleNotch, ArrowElbowDownLeft,
   Path, Power,
 } from "@phosphor-icons/react";
-import { useDebouncedAddressSearch, shortLabel } from "@/components/LocationFinder";
+import usePlaceSearch, { placeSubtitle } from "@/lib/usePlaceSearch";
 import { buildPlaceIndex, searchPlaces, parseRouteQuery, KIND_LABEL, FROM_BIAS, TO_BIAS } from "./places";
 
 // Explore's front door: one search box over every place the platform knows
@@ -23,7 +23,7 @@ export default function CommandPalette({ open, onOpenChange, gridParties, substa
   const [active, setActive] = useState(0);
   const listRef = useRef(null);
   const q = query.trim().toLowerCase();
-  const { results: addressResults, status: addressStatus } = useDebouncedAddressSearch(query, open && q.length >= 3);
+  const { results: addressResults, status: addressStatus } = usePlaceSearch(query, open && q.length >= 3 && !parseRouteQuery(query));
 
   useEffect(() => { if (open) { setQuery(""); setActive(0); } }, [open]);
 
@@ -47,10 +47,7 @@ export default function CommandPalette({ open, onOpenChange, gridParties, substa
         : null;
     })();
     const local = searchPlaces(index, query);
-    const addresses = addressResults.map(r => ({
-      kind: "address", name: shortLabel(r), sub: r.display_name.split(",").slice(1, 3).join(",").trim(),
-      lat: Number(r.lat), lng: Number(r.lon),
-    }));
+    const addresses = addressResults.map(r => ({ kind: "address", name: r.name, sub: placeSubtitle(r), lat: r.lat, lng: r.lng, state: r.state }));
     return [
       ...(routeItem ? [routeItem] : []),
       ...("scan a site".includes(q) ? [armItem] : []),
@@ -127,7 +124,7 @@ export default function CommandPalette({ open, onOpenChange, gridParties, substa
                   {header && <p className="px-2.5 pb-1 pt-2.5 text-[9px] font-bold uppercase tracking-widest text-muted-foreground">{header}</p>}
                   <div
                     id={`explore-opt-${i}`} data-idx={i} role="option" aria-selected={selected}
-                    onMouseMove={() => setActive(i)} onClick={() => choose(item)}
+                    onMouseMove={(e) => { if (e.movementX || e.movementY) setActive(i); }} onClick={() => choose(item)}
                     className={`flex cursor-pointer items-center gap-3 rounded-lg px-2.5 py-2 transition-colors ${selected ? "text-foreground" : "text-foreground/90"}`}
                     style={selected ? { background: "hsl(var(--primary) / 0.12)" } : undefined}
                   >

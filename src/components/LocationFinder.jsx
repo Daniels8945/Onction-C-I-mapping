@@ -4,41 +4,7 @@ import { Plus, MagnifyingGlass, CircleNotch, MapPinLine } from "@phosphor-icons/
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-
-// Biases (not restricts — bounded=0) Nominatim toward Nigeria's bounding box,
-// on top of the countrycodes filter, so ambiguous names ("Victoria Island" vs
-// a same-named place elsewhere) rank correctly.
-const NG_VIEWBOX = "2.6,13.9,14.7,4.2";
-
-export function useDebouncedAddressSearch(query, enabled) {
-  const [results, setResults] = useState([]);
-  const [status, setStatus] = useState("idle"); // idle | loading | done | error
-
-  useEffect(() => {
-    if (!enabled || query.trim().length < 3) { setResults([]); setStatus("idle"); return; }
-    setStatus("loading");
-    const controller = new AbortController();
-    const timer = setTimeout(async () => {
-      try {
-        const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}&countrycodes=ng&format=json&limit=6&addressdetails=1&viewbox=${NG_VIEWBOX}&bounded=0`;
-        const r = await fetch(url, { signal: controller.signal, headers: { Accept: "application/json" } });
-        const d = await r.json();
-        setResults(d);
-        setStatus("done");
-      } catch (err) {
-        if (err.name !== "AbortError") setStatus("error");
-      }
-    }, 400);
-    return () => { clearTimeout(timer); controller.abort(); };
-  }, [query, enabled]);
-
-  return { results, status };
-}
-
-export function shortLabel(result) {
-  const a = result.address || {};
-  return a.amenity || a.shop || a.office || a.building || a.road || result.display_name.split(",")[0];
-}
+import usePlaceSearch, { placeSubtitle } from "@/lib/usePlaceSearch";
 
 export default function LocationFinder({ onAddPin }) {
   const [tab,   setTab]   = useState("coords");
@@ -49,7 +15,7 @@ export default function LocationFinder({ onAddPin }) {
   const [coordsStatus, setCoordsStatus] = useState("");
   const boxRef = useRef(null);
 
-  const { results, status: searchStatus } = useDebouncedAddressSearch(query, tab === "address");
+  const { results, status: searchStatus } = usePlaceSearch(query, tab === "address");
   const [open, setOpen] = useState(false);
   useEffect(() => { setOpen(tab === "address" && query.trim().length >= 3); }, [tab, query]);
 
@@ -61,7 +27,7 @@ export default function LocationFinder({ onAddPin }) {
   }, []);
 
   const pickResult = (r) => {
-    onAddPin(parseFloat(r.lon), parseFloat(r.lat), label.trim() || shortLabel(r));
+    onAddPin(r.lng, r.lat, label.trim() || r.name);
     setQuery(""); setLabel(""); setOpen(false);
   };
 
@@ -132,8 +98,8 @@ export default function LocationFinder({ onAddPin }) {
                   >
                     <MapPinLine className="h-3.5 w-3.5 text-primary flex-shrink-0 mt-0.5" />
                     <span className="min-w-0">
-                      <span className="block text-xs text-foreground truncate">{shortLabel(r)}</span>
-                      <span className="block text-[9px] text-muted-foreground truncate">{r.display_name}</span>
+                      <span className="block text-xs text-foreground truncate">{r.name}</span>
+                      <span className="block text-[9px] text-muted-foreground truncate">{placeSubtitle(r)}</span>
                     </span>
                   </button>
                 ))}

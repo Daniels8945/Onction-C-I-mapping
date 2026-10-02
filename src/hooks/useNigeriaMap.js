@@ -211,6 +211,9 @@ export default function useNigeriaMap({ isDark, BASEMAP } = {}) {
       setMapReady(true);
     });
     mapRef.current = map;
+    // Browser tests (Playwright) open the app with ?e2e to inspect what the
+    // map is drawing; never exposed otherwise.
+    if (new URLSearchParams(window.location.search).has("e2e")) window.__gisMap = map;
     return () => { map.remove(); mapRef.current = null; setMapReady(false); };
   }, []);
 

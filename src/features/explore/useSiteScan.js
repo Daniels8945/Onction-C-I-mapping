@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import maplibregl from "maplibre-gl";
 import * as turf from "@turf/turf";
 import { runSiteScan } from "./siteScan";
+import { whenStyleReady } from "./whenStyleReady";
 
 // Map side of the Explore scanner: arming the crosshair, catching the scan
 // click, and drawing the pulse, distance rings and source arcs. Owns its own
@@ -77,7 +78,10 @@ export default function useSiteScan({ mapRef, mapReady, locate, offtakers, getSu
 
   const draw = useCallback((s) => {
     const map = mapRef.current;
-    if (!map || !map.isStyleLoaded()) return;
+    if (map) whenStyleReady(map, "scan", () => drawNow(map, s));
+  }, [mapRef, locate]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const drawNow = (map, s) => {
     ensureLayers(map);
     const center = [s.lng, s.lat];
 
@@ -123,7 +127,7 @@ export default function useSiteScan({ mapRef, mapReady, locate, offtakers, getSu
       };
       animRef.current = requestAnimationFrame(tick);
     }
-  }, [mapRef, locate]);
+  };
 
   const frame = useCallback((s) => {
     const map = mapRef.current;
@@ -219,7 +223,7 @@ export default function useSiteScan({ mapRef, mapReady, locate, offtakers, getSu
     const map = mapRef.current;
     if (!mapReady || !map) return;
     const redraw = () => {
-      if (scanRef.current && map.isStyleLoaded() && !map.getSource("scan-rings-src")) { stopAnim(); draw(scanRef.current); }
+      if (scanRef.current && !map.getSource("scan-rings-src")) { stopAnim(); draw(scanRef.current); }
     };
     map.on("styledata", redraw);
     map.on("idle", redraw);

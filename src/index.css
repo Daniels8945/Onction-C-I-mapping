@@ -205,6 +205,21 @@ html.dark .maplibregl-ctrl-group button span { filter: invert(1); opacity: 0.6; 
   pointer-events: none;
 }
 
+/* Connect: the customer pin (draggable) with its name above it. */
+.customer-pin { display: flex; flex-direction: column; align-items: center; cursor: grab; }
+.customer-pin:active { cursor: grabbing; }
+.customer-pin__label {
+  max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  margin-bottom: 4px; padding: 2px 8px; border-radius: 9999px;
+  background: #0b1220; color: #fff; font: 600 11px/1.5 system-ui, sans-serif;
+  border: 1px solid rgba(255,255,255,0.25); box-shadow: 0 2px 8px rgba(0,0,0,0.4);
+}
+.customer-pin__label:empty { display: none; }
+.customer-pin__head {
+  width: 26px; height: 26px; border-radius: 50% 50% 50% 0; transform: rotate(-45deg);
+  background: #f43f5e; border: 3px solid #fff; box-shadow: 0 3px 10px rgba(0,0,0,0.45);
+}
+
 @media (prefers-reduced-motion: reduce) {
   .scan-pulse span, .explore-btn::after { animation: none; }
   .scan-pulse span { opacity: 0; }

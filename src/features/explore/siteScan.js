@@ -45,18 +45,14 @@ export function solarYieldEstimate(lat) {
   return Math.round((1300 + t * 450) / 10) * 10;
 }
 
+// Place name + state / LGA for a point, via the server (which caches the
+// address lookup and takes state / LGA from the official boundaries).
 export async function reverseGeocode(lat, lng, signal) {
-  const url = `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json&zoom=14&addressdetails=1`;
-  const r = await fetch(url, { signal, headers: { Accept: "application/json" } });
-  if (!r.ok) throw new Error(`Geocoder ${r.status}`);
-  const d = await r.json();
-  const a = d.address || {};
-  const place = a.suburb || a.town || a.city_district || a.city || a.village || a.county || d.name || null;
-  const area = a.city || a.town || a.county || null;
+  const d = await gridApi.geocodeReverse(lat, lng, { signal });
   return {
-    place: place && area && place !== area ? `${place}, ${area}` : place || area,
-    state: a.state || null,
-    country: a.country_code || null,
+    place: d.name && d.lga && d.name !== d.lga ? `${d.name}, ${d.lga}` : d.name || d.lga,
+    state: d.state, lga: d.lga, address: d.address,
+    country: d.inNigeria ? "ng" : null,
   };
 }
 

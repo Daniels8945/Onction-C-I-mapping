@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useMemo } from "react";
 import { CircleNotch } from "@phosphor-icons/react";
-import { useDebouncedAddressSearch, shortLabel } from "@/components/LocationFinder";
+import usePlaceSearch, { placeSubtitle } from "@/lib/usePlaceSearch";
 import { searchPlaces, KIND_LABEL } from "./places";
 
 // One end of a route (From / To): shows the chosen place; typing searches
@@ -11,7 +11,7 @@ export default function PlacePicker({ label, dot, value, onChange, index, placeh
   const [active, setActive] = useState(0);
   const inputRef = useRef(null);
   const typing = open && text !== (value?.name || "");
-  const { results: addressResults, status: addressStatus } = useDebouncedAddressSearch(text, typing && text.trim().length >= 3);
+  const { results: addressResults, status: addressStatus } = usePlaceSearch(text, typing && text.trim().length >= 3);
 
   useEffect(() => { setText(value?.name || ""); }, [value]);
   useEffect(() => { if (autoFocus) inputRef.current?.focus(); }, [autoFocus]);
@@ -19,10 +19,7 @@ export default function PlacePicker({ label, dot, value, onChange, index, placeh
   const options = useMemo(() => {
     if (!typing || !text.trim()) return [];
     const local = searchPlaces(index, text, { perKind: 3, limit: 8, bias });
-    const addresses = addressResults.slice(0, 4).map(r => ({
-      kind: "address", name: shortLabel(r), sub: r.display_name.split(",").slice(1, 3).join(",").trim(),
-      lat: Number(r.lat), lng: Number(r.lon),
-    }));
+    const addresses = addressResults.slice(0, 4).map(r => ({ kind: "address", name: r.name, sub: placeSubtitle(r), lat: r.lat, lng: r.lng, state: r.state }));
     return [...local, ...addresses];
   }, [typing, text, index, addressResults, bias]);
 
@@ -69,7 +66,7 @@ export default function PlacePicker({ label, dot, value, onChange, index, placeh
           {options.map((o, i) => (
             <div
               key={`${o.kind}-${o.name}-${i}`} id={`${listId}-${i}`} role="option" aria-selected={i === active}
-              onMouseDown={(e) => { e.preventDefault(); pick(o); }} onMouseMove={() => setActive(i)}
+              onMouseDown={(e) => { e.preventDefault(); pick(o); }} onMouseMove={(e) => { if (e.movementX || e.movementY) setActive(i); }}
               className="flex cursor-pointer items-baseline gap-2 rounded px-2 py-1.5"
               style={i === active ? { background: "hsl(var(--primary) / 0.12)" } : undefined}
             >

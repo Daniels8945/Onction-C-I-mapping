@@ -3,6 +3,22 @@
 // (recursive CTE) and views 5a-5c in onction_grid_1.sql.
 
 import { pool } from "./db.js";
+import { locate } from "./geo/admin.js";
+
+// State-scoped routing ("keep this within Ogun") picks the path with the
+// fewest kilometres of line outside the state, then the shortest overall: an
+// in-state path always wins when one exists, and a path that genuinely has
+// to leave (e.g. Ogun's 132 kV substations, fed radially from Ikeja West in
+// Lagos) leaves for as short a stretch as possible. Implemented as a cost
+// where out-of-state km weigh OUTSIDE_WEIGHT× more — large enough to be
+// lexicographic at grid scale. Reported distances are always real km.
+const OUTSIDE_WEIGHT = 1000;
+// When snapping a point to the grid in a state-scoped query, an in-state
+// substation is preferred over a nearer out-of-state one unless it's more
+// than this much farther (km, or ×, whichever allows more).
+const IN_STATE_SNAP_EXTRA_KM = 15;
+const IN_STATE_SNAP_RATIO = 1.5;
+const GRAPH_TTL_MS = 60_000;
 
 const R_KM = 6371;
 function haversineKm(lat1, lon1, lat2, lon2) {
@@ -15,7 +31,11 @@ function haversineKm(lat1, lon1, lat2, lon2) {
   return R_KM * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
+// The network changes rarely; cache it briefly instead of re-reading it (and
+// re-locating every substation) on every request.
+let cached = null;
 export async function loadGraph() {
+  if (cached && Date.now() - cached.at < GRAPH_TTL_MS) return cached.graph;
   const [{ rows: substations }, { rows: edges }] = await Promise.all([
     pool.query("SELECT name, voltage_kv, lat::float AS lat, lon::float AS lon, is_injection, status FROM substation"),
     // Only "existing" corridors are real, built lines — ongoing/proposed ones
@@ -24,17 +44,22 @@ export async function loadGraph() {
     pool.query("SELECT from_node, to_node, km::float AS km FROM grid_edge WHERE status = 'existing'"),
   ]);
 
+  for (const s of substations) Object.assign(s, locate(s.lat, s.lon)); // + state, lga
   const nodes = new Map(substations.map((s) => [s.name, s]));
   const adjacency = new Map(substations.map((s) => [s.name, []]));
   for (const e of edges) {
     adjacency.get(e.from_node)?.push({ to: e.to_node, km: e.km });
     adjacency.get(e.to_node)?.push({ to: e.from_node, km: e.km });
   }
-  return { nodes, adjacency };
+  const graph = { nodes, adjacency };
+  cached = { at: Date.now(), graph };
+  return graph;
 }
 
-// Single-source Dijkstra over the (small, ~53-node) substation graph.
-export function shortestPaths(graph, sourceName) {
+// Single-source Dijkstra over the (small) substation graph. With scopeState,
+// `dist` is the scoped cost above, not km — use pathKm() for distance.
+export function shortestPaths(graph, sourceName, { scopeState = null } = {}) {
+  const outside = (n) => scopeState && graph.nodes.get(n)?.state !== scopeState;
   const dist = new Map([...graph.nodes.keys()].map((n) => [n, Infinity]));
   const prev = new Map();
   const visited = new Set();
@@ -49,7 +74,7 @@ export function shortestPaths(graph, sourceName) {
     if (u === null) break;
     visited.add(u);
     for (const { to, km } of graph.adjacency.get(u) || []) {
-      const alt = dist.get(u) + km;
+      const alt = dist.get(u) + km * (outside(u) || outside(to) ? OUTSIDE_WEIGHT : 1);
       if (alt < dist.get(to)) { dist.set(to, alt); prev.set(to, u); }
     }
   }
@@ -80,16 +105,37 @@ export function nodeSequenceToHops(graph, seq) {
   return hops;
 }
 
-export function nearestInjectionSubstation(graph, lat, lon) {
-  let best = null, bestKm = Infinity;
+export function pathKm(hops) {
+  return hops.reduce((a, h) => a + (h.km || 0), 0);
+}
+
+// Built substations that some existing line reaches — a proposed one (e.g.
+// Wukari) is often the nearest, but nothing can route to it.
+export const isGridSupplyPoint = (graph, s) =>
+  s.is_injection && s.status === "existing" && !!graph.adjacency.get(s.name)?.length;
+
+// Where a point joins the grid. With scopeState, an in-state supply point is
+// preferred unless it's much farther than the nearest one overall; the
+// response says which was chosen and why (`scope`).
+export function nearestInjectionSubstation(graph, lat, lon, { scopeState = null } = {}) {
+  let best = null, bestKm = Infinity, inState = null, inStateKm = Infinity;
   for (const s of graph.nodes.values()) {
-    // Only built substations that some existing line reaches — a proposed
-    // one (e.g. Wukari) is often the nearest, but no GenCo can route to it.
-    if (!s.is_injection || s.status !== "existing" || !graph.adjacency.get(s.name)?.length) continue;
+    if (!isGridSupplyPoint(graph, s)) continue;
     const d = haversineKm(lat, lon, s.lat, s.lon);
     if (d < bestKm) { bestKm = d; best = s; }
+    if (scopeState && s.state === scopeState && d < inStateKm) { inStateKm = d; inState = s; }
   }
-  return best ? { node: best.name, lastMileKm: Math.round(bestKm * 10) / 10 } : null;
+  if (!best) return null;
+  const r1 = (x) => Math.round(x * 10) / 10;
+  if (scopeState && inState && inState !== best &&
+      inStateKm <= Math.max(bestKm + IN_STATE_SNAP_EXTRA_KM, bestKm * IN_STATE_SNAP_RATIO)) {
+    return { node: inState.name, lastMileKm: r1(inStateKm), scopeChoice: "in-state", nearestOverall: { node: best.name, km: r1(bestKm), state: best.state } };
+  }
+  return {
+    node: best.name, lastMileKm: r1(bestKm),
+    scopeChoice: !scopeState ? null : best.state === scopeState ? "in-state" : inState ? "in-state-too-far" : "no-in-state",
+    ...(scopeState && inState && inState !== best && { nearestInState: { node: inState.name, km: r1(inStateKm) } }),
+  };
 }
 
 export function lossPct(routedKm, lossModel) {

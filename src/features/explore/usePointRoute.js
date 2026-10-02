@@ -3,6 +3,7 @@ import maplibregl from "maplibre-gl";
 import { gridApi } from "@/lib/gridApi";
 import { runSiteScan } from "./siteScan";
 import { routeParams } from "./places";
+import { whenStyleReady } from "./whenStyleReady";
 
 // Point-to-point routing for Explore: any place → any place over the built
 // grid, plus the same site stats the scanner shows for each end. Draws its
@@ -43,6 +44,10 @@ export default function usePointRoute({ mapRef, mapReady, getSubstations, offtak
   const [to, setTo] = useState(null);
   const [mw, setMw] = useState("");
   const [route, setRoute] = useState({ status: "idle" });     // idle | loading | ready | error
+  // State scope: when both ends are in the same state, prefer a path that
+  // stays in it (the server explains when it can't). On by default.
+  const [keepInState, setKeepInState] = useState(true);
+  const [endStates, setEndStates] = useState({ from: undefined, to: undefined }); // undefined = not looked up yet, null = no state
   const [ends, setEnds] = useState({ from: null, to: null });  // runSiteScan results (without GenCo ranking)
   const routeRef = useRef(null);
   const markersRef = useRef([]);
@@ -62,9 +67,12 @@ export default function usePointRoute({ mapRef, mapReady, getSubstations, offtak
     map?.getSource("ptroute-pts-src")?.setData(EMPTY);
   }, [mapRef]);
 
-  const draw = useCallback((r, a, b, { fit = false } = {}) => {
+  const draw = useCallback((r, a, b, opts) => {
     const map = mapRef.current;
-    if (!map || !map.isStyleLoaded()) return;
+    if (map) whenStyleReady(map, "ptroute", () => drawNow(map, r, a, b, opts));
+  }, [mapRef, nodeCoords]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const drawNow = (map, r, a, b, { fit = false } = {}) => {
     ensureLayers(map);
     const A = [a.lng, a.lat], B = [b.lng, b.lat];
     const lines = [], pts = [];
@@ -95,11 +103,32 @@ export default function usePointRoute({ mapRef, mapReady, getSubstations, offtak
         maxZoom: 10, duration: 1200,
       });
     }
-  }, [mapRef, nodeCoords]);
+  };
 
-  // Recompute whenever both ends (or the MW) are set.
+  // Which state each end is in (from the server's boundary data).
   useEffect(() => {
-    if (!open || !from || !to) return;
+    setEndStates(s => ({ ...s, from: undefined }));
+    if (!from) return;
+    let live = true;
+    gridApi.locate(from.lat, from.lng).then(r => live && setEndStates(s => ({ ...s, from: r.state })))
+      .catch(() => live && setEndStates(s => ({ ...s, from: null })));
+    return () => { live = false; };
+  }, [from]);
+  useEffect(() => {
+    setEndStates(s => ({ ...s, to: undefined }));
+    if (!to) return;
+    let live = true;
+    gridApi.locate(to.lat, to.lng).then(r => live && setEndStates(s => ({ ...s, to: r.state })))
+      .catch(() => live && setEndStates(s => ({ ...s, to: null })));
+    return () => { live = false; };
+  }, [to]);
+  const sameState = endStates.from && endStates.from === endStates.to ? endStates.from : null;
+  const scopeState = keepInState ? sameState : null;
+  const statesKnown = endStates.from !== undefined && endStates.to !== undefined;
+
+  // Recompute whenever both ends (or the MW, or the scope) are set.
+  useEffect(() => {
+    if (!open || !from || !to || !statesKnown) return;
     abortRef.current?.abort();
     const controller = new AbortController();
     abortRef.current = controller;
@@ -107,7 +136,7 @@ export default function usePointRoute({ mapRef, mapReady, getSubstations, offtak
     const mwNum = Number(mw) > 0 ? Number(mw) : undefined;
 
     setRoute({ status: "loading" });
-    gridApi.route({ ...routeParams(from, to), mw: mwNum })
+    gridApi.route({ ...routeParams(from, to), mw: mwNum, scopeState: scopeState || undefined })
       .then(r => {
         if (signal.aborted) return;
         if (r.error) { setRoute({ status: "error", message: r.error }); clearMap(); return; }
@@ -122,7 +151,7 @@ export default function usePointRoute({ mapRef, mapReady, getSubstations, offtak
       });
 
     return () => controller.abort();
-  }, [open, from, to, mw, draw, clearMap]);
+  }, [open, from, to, mw, scopeState, statesKnown, draw, clearMap]);
 
   // Site stats for each end — only refetched when that end changes.
   useEffect(() => {
@@ -147,7 +176,7 @@ export default function usePointRoute({ mapRef, mapReady, getSubstations, offtak
     if (!mapReady || !map) return;
     const redraw = () => {
       const cur = routeRef.current;
-      if (open && cur && map.isStyleLoaded() && !map.getSource("ptroute-lines-src")) draw(cur.r, cur.from, cur.to);
+      if (open && cur && !map.getSource("ptroute-lines-src")) draw(cur.r, cur.from, cur.to);
     };
     map.on("styledata", redraw);
     map.on("idle", redraw);
@@ -165,5 +194,5 @@ export default function usePointRoute({ mapRef, mapReady, getSubstations, offtak
   }, [clearMap]);
   const swap = useCallback(() => { setFrom(to); setTo(from); }, [from, to]);
 
-  return { open, from, to, mw, route, ends, setFrom, setTo, setMw, swap, start, close };
+  return { open, from, to, mw, route, ends, setFrom, setTo, setMw, swap, start, close, keepInState, setKeepInState, sameState, endStates };
 }

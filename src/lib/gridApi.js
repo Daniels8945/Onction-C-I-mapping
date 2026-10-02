@@ -1,7 +1,7 @@
 const BASE = import.meta.env.VITE_API_URL || "http://localhost:4000";
 
-async function get(path) {
-  const res = await fetch(`${BASE}${path}`);
+async function get(path, { signal } = {}) {
+  const res = await fetch(`${BASE}${path}`, { signal });
   if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || `${res.status} ${res.statusText}`);
   return res.json();
 }
@@ -16,9 +16,15 @@ export const gridApi = {
   lossModels:  () => get("/api/loss-models"),
   atccScenarios: () => get("/api/atcc-scenarios"),
   feederSummary: () => get("/api/feeders/summary"),
+  // Connect workflow
+  geocodeSearch: (q, opts) => get(`/api/geocode/search?${new URLSearchParams({ q })}`, opts),
+  geocodeReverse: (lat, lng, opts) => get(`/api/geocode/reverse?${new URLSearchParams({ lat, lng })}`, opts),
+  locate: (lat, lng, opts) => get(`/api/locate?${new URLSearchParams({ lat, lng })}`, opts),
+  connect: (lat, lng, scopeState, opts) => get(`/api/connect?${new URLSearchParams({ lat, lng, ...(scopeState !== undefined && { scopeState: scopeState || "any" }) })}`, opts),
+  connectLine: (lat, lng, substation, opts) => get(`/api/connect/line?${new URLSearchParams({ lat, lng, substation })}`, opts),
   // From a GenCo (genco) or any point (fromLat/fromLng); to a named
   // offtaker/DisCo (dest) or any point (lat/lng).
-  route: ({ genco, fromLat, fromLng, dest, lat, lng, lossModel, scenario, mw }) => {
+  route: ({ genco, fromLat, fromLng, dest, lat, lng, lossModel, scenario, mw, scopeState }) => {
     const p = new URLSearchParams();
     if (genco) p.set("genco", genco);
     if (fromLat != null) p.set("fromLat", fromLat);
@@ -29,6 +35,7 @@ export const gridApi = {
     if (lossModel) p.set("lossModel", lossModel);
     if (scenario) p.set("scenario", scenario);
     if (mw != null) p.set("mw", mw);
+    if (scopeState) p.set("scopeState", scopeState);
     return get(`/api/route?${p}`);
   },
   bestSource: ({ dest, lat, lng, lossModel, scenario, mw }) => {

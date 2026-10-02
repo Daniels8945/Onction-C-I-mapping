@@ -90,7 +90,7 @@ export default function RouteCard({ planner, index, feeder, onClose, onScan }) {
       initial={{ opacity: 0, x: -16 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -16 }}
       transition={{ duration: 0.25, ease: "easeOut" }}
       className="absolute left-3 right-3 bottom-3 top-auto z-[26] flex max-h-[62%] flex-col overflow-hidden rounded-xl border border-border shadow-2xl backdrop-blur-md
-                 sm:right-auto sm:bottom-auto sm:top-3 sm:w-[360px] sm:max-h-[calc(100%-5.5rem)]"
+                 sm:right-auto sm:bottom-auto sm:top-[68px] sm:w-[360px] sm:max-h-[calc(100%-7.5rem)]"
       style={{ background: "color-mix(in srgb, hsl(var(--card)) 94%, transparent)" }}
       aria-label="Route between two places"
     >
@@ -131,6 +131,17 @@ export default function RouteCard({ planner, index, feeder, onClose, onScan }) {
           />
           MW — shows monthly energy delivered and lost
         </label>
+        {planner.endStates.from && planner.endStates.to && planner.endStates.from !== planner.endStates.to && (
+          <p className="relative mt-1.5 text-[10.5px] text-muted-foreground">
+            Cross-state: A is in <span className="font-semibold text-foreground">{planner.endStates.from}</span>, B in <span className="font-semibold text-foreground">{planner.endStates.to}</span>.
+          </p>
+        )}
+        {planner.sameState && (
+          <label className="relative mt-1.5 flex cursor-pointer items-center gap-2 text-[10.5px] text-muted-foreground">
+            <input type="checkbox" checked={planner.keepInState} onChange={(e) => planner.setKeepInState(e.target.checked)} className="accent-[hsl(var(--primary))]" />
+            Keep the route within <span className="font-semibold text-foreground">{planner.sameState}</span> where the network allows
+          </label>
+        )}
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto">
@@ -153,13 +164,32 @@ export default function RouteCard({ planner, index, feeder, onClose, onScan }) {
                 </div>
                 <DistanceBar first={r.first_mile_km || 0} grid={r.routed_km} last={r.last_mile_km || 0} />
                 <div className="flex flex-wrap items-center gap-y-1 text-[10.5px]">
-                  {path.map((n, i) => (
-                    <span key={`${n}-${i}`} className="flex items-center">
-                      {i > 0 && <CaretRight className="mx-0.5 h-2.5 w-2.5 text-muted-foreground" />}
-                      <span className={`rounded px-1.5 py-0.5 ${i === 0 || i === path.length - 1 ? "bg-primary/15 font-semibold text-foreground" : "bg-muted text-foreground/85"}`}>{n}</span>
-                    </span>
-                  ))}
+                  {path.map((n, i) => {
+                    const outside = r.scope?.outside_nodes.find(o => o.node === n);
+                    return (
+                      <span key={`${n}-${i}`} className="flex items-center">
+                        {i > 0 && <CaretRight className="mx-0.5 h-2.5 w-2.5 text-muted-foreground" />}
+                        <span className={`rounded px-1.5 py-0.5 ${outside ? "bg-amber-500/15 text-amber-500" : i === 0 || i === path.length - 1 ? "bg-primary/15 font-semibold text-foreground" : "bg-muted text-foreground/85"}`}>
+                          {n}{outside?.state && <span className="opacity-80"> · {outside.state}</span>}
+                        </span>
+                      </span>
+                    );
+                  })}
                 </div>
+                {r.scope && (r.scope.stays_in_state ? (
+                  <p className="text-[10.5px] text-emerald-500">Stays within {r.scope.state} the whole way.</p>
+                ) : (
+                  <Problem>
+                    No built line links these substations inside {r.scope.state} in the network data, so the connection runs through{" "}
+                    {[...new Set(r.scope.outside_nodes.map(o => `${o.node}${o.state ? ` (${o.state})` : ""}`))].join(", ")}.
+                    {r.scope.extra_km_for_scope > 0 && ` Keeping as much as possible in ${r.scope.state} adds ${r.scope.extra_km_for_scope} km over the shortest path (${r.scope.shortest_path_km} km).`}
+                  </Problem>
+                ))}
+                {[["Start", r.scope?.source_snap], ["End", r.scope?.dest_snap]].map(([which, snap]) => snap?.choice === "in-state-too-far" && snap.nearest_in_state && (
+                  <p key={which} className="text-[10px] text-muted-foreground">
+                    {which}: the nearest {r.scope.state} supply point ({snap.nearest_in_state.node}, {snap.nearest_in_state.km} km) is much farther than one across the boundary, so the nearer one is used.
+                  </p>
+                ))}
                 {straightKm != null && straightKm > 1 && (
                   <p className="text-[10px] text-muted-foreground">
                     Straight line {fmtKm(straightKm)} km · the grid path is <span className="text-foreground">{(r.total_km / straightKm).toFixed(1)}×</span> longer.

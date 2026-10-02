@@ -30,7 +30,7 @@ export default function ScanCard({ scan, feeder, onClose, onRescan, onRoute, onP
       initial={{ opacity: 0, x: -16 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -16 }}
       transition={{ duration: 0.25, ease: "easeOut" }}
       className="absolute left-3 right-3 bottom-3 top-auto z-[26] flex max-h-[55%] flex-col overflow-hidden rounded-xl border border-border shadow-2xl backdrop-blur-md
-                 sm:right-auto sm:bottom-auto sm:top-3 sm:w-[340px] sm:max-h-[calc(100%-5.5rem)]"
+                 sm:right-auto sm:bottom-auto sm:top-[68px] sm:w-[340px] sm:max-h-[calc(100%-7.5rem)]"
       style={{ background: "color-mix(in srgb, hsl(var(--card)) 94%, transparent)" }}
       aria-label="Site scan results"
     >
