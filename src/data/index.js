@@ -183,14 +183,20 @@ export const CI_CUSTOMERS = [
 export const TCN_LOOPS = [
   { id: "loop1", name: "Onitsha–Alaoji–Ikot Ekpene–New Haven", color: "#00ff00", status: "existing",
     nodes: ["Onitsha", "Alaoji", "Ikot Ekpene", "Ugwuaji", "New Haven", "Onitsha"] },
+  // Ikeja West–Benin in loops 2 and 5 is drawn via Omotosho: on TCN's map
+  // both loops follow the coastal corridor through the Omotosho (NIPP) S/S
+  // rather than cutting straight across Ogun/Ondo.
   { id: "loop2", name: "Ikeja West–Benin–Osogbo–Ayede", color: "#72001b", status: "existing",
-    nodes: ["Ikeja West", "Benin", "Osogbo", "Ayede (Ibadan)", "Ikeja West"] },
+    nodes: ["Ikeja West", "Omotosho", "Benin", "Osogbo", "Ayede (Ibadan)", "Ikeja West"] },
+  // "Abuja" on loops 3 and 4 is Gwagwalada: on TCN's map both loops drop
+  // from Shiroro straight to Gwagwalada — Katampe sits off to the east,
+  // on neither loop.
   { id: "loop3", name: "Benin–Onitsha–New Haven–Makurdi–Jos–Kaduna–Shiroro–Abuja–Ajaokuta", color: "#ff00ff", status: "existing",
-    nodes: ["Benin", "Onitsha", "New Haven", "Ugwuaji", "Apir/Makurdi", "Makeri (Jos)", "Kaduna", "Shiroro", "Katampe", "Gwagwalada", "Lokoja", "Ajaokuta", "Benin"] },
+    nodes: ["Benin", "Onitsha", "New Haven", "Ugwuaji", "Apir/Makurdi", "Makeri (Jos)", "Kaduna", "Shiroro", "Gwagwalada", "Lokoja", "Ajaokuta", "Benin"] },
   { id: "loop4", name: "Benin–Osogbo–Ganmo–Jebba–Shiroro–Abuja–Ajaokuta", color: "#ffff00", status: "existing",
-    nodes: ["Benin", "Osogbo", "Ganmo (Ilorin)", "Jebba", "Shiroro", "Katampe", "Gwagwalada", "Lokoja", "Ajaokuta", "Benin"] },
+    nodes: ["Benin", "Osogbo", "Ganmo (Ilorin)", "Jebba", "Shiroro", "Gwagwalada", "Lokoja", "Ajaokuta", "Benin"] },
   { id: "loop5", name: "Ikeja West–Benin–Onitsha–Alaoji–Ikot Ekpene–New Haven–Makurdi–Jos–Kaduna–Shiroro–Jebba–Ganmo–Osogbo (outer ring)", color: "#00ffff", status: "existing",
-    nodes: ["Ikeja West", "Benin", "Onitsha", "Alaoji", "Ikot Ekpene", "New Haven", "Ugwuaji", "Apir/Makurdi", "Makeri (Jos)", "Kaduna", "Shiroro", "Jebba", "Ganmo (Ilorin)", "Osogbo", "Ayede (Ibadan)", "Ikeja West"] },
+    nodes: ["Ikeja West", "Omotosho", "Benin", "Onitsha", "Alaoji", "Ikot Ekpene", "New Haven", "Ugwuaji", "Apir/Makurdi", "Makeri (Jos)", "Kaduna", "Shiroro", "Jebba", "Ganmo (Ilorin)", "Osogbo", "Ayede (Ibadan)", "Ikeja West"] },
   { id: "loop6", name: "Kainji–Jebba–Shiroro–Kaduna–Kano–Katsina–Sokoto–Birnin Kebbi", color: "#4a0094", status: "ongoing",
     nodes: ["Kainji", "Jebba", "Shiroro", "Kaduna", "Kumbotso (Kano)", "Katsina", "Sokoto", "Birnin Kebbi", "Kainji"] },
 ];

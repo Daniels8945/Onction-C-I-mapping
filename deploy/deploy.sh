@@ -17,8 +17,23 @@ MAPPING_WEB_PORT=4080
 # that server can reach these containers — see deploy/DEPLOY.md's
 # "cross-server" section for the firewall rule that has to go with it.
 MAPPING_BIND_ADDR=127.0.0.1
+# Key for the live feeder-compliance API — the poller container records it
+# once a minute. Leave blank and the poller just idles.
+FEEDER_API_KEY=
 EOF
   echo "Wrote .env — edit MAPPING_CORS_ORIGIN to https://onctionenergy.com/ once it's live."
+fi
+
+if ! grep -qE '^FEEDER_API_KEY=.+' .env; then
+  echo "FEEDER_API_KEY is not set in .env — the feeder poller will run but stay idle until it is."
+fi
+
+# OSRM (road-distance last mile) only runs once its data has been built with
+# server/scripts/build-osrm-data.sh — otherwise the container would crash-loop.
+if ls osrm-data/nigeria-latest.osrm* >/dev/null 2>&1; then
+  export COMPOSE_PROFILES=osrm
+else
+  echo "No OSRM data in osrm-data/ — skipping the osrm container (last-mile distances fall back to straight-line)."
 fi
 
 docker compose build

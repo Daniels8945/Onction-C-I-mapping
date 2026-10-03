@@ -18,6 +18,7 @@ export default function Sidebar({
   gridStatus, gridError, gridParties, gridLossModels, gridAtccScenarios,
   gridRouteResult, gridBestSource, gridPresetGenco, gridPresetDest, gridNearby,
   onComputeGridRoute, onComputeGridBestSource, onClearGridRoute, onApplyCustomRoute,
+  dockedPanel, dockPreview,
 }) {
   return (
     <>
@@ -60,6 +61,15 @@ export default function Sidebar({
       >
         <ScrollArea className="w-full h-full">
           <div className="flex flex-col pb-4">
+
+            {/* Add Location, when docked here (see useDockablePanel) — or a
+                drop zone while its floating card is dragged over the sidebar */}
+            {dockedPanel && <>{dockedPanel}<Separator className="mt-4" /></>}
+            {!dockedPanel && dockPreview && (
+              <div className="mx-3 mt-3 flex h-16 items-center justify-center rounded-md border-2 border-dashed border-primary/60 bg-primary/5 text-[10px] font-semibold text-primary">
+                Drop to dock Add Location
+              </div>
+            )}
 
             {/* C&I Layer */}
             <SectionTitle hint="Commercial & Industrial customers — large factories, banks, mills etc. that buy power directly under their own contract instead of through the standard grid tariff.">

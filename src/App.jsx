@@ -1,15 +1,26 @@
-import { useState, useEffect, useRef } from "react";
-import { AnimatePresence, motion, useDragControls } from "motion/react";
-import { MapPin, DotsSixVertical } from "@phosphor-icons/react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import { AnimatePresence, motion } from "motion/react";
+import { MapPin, Crosshair } from "@phosphor-icons/react";
 import Topbar         from "./components/Topbar";
 import Sidebar        from "./components/Sidebar";
 import MapView        from "./components/MapView";
 import MapLegend      from "./components/MapLegend";
 import LocationFinder from "./components/LocationFinder";
 import StatusBar      from "./components/StatusBar";
+import LocationPanelHeader from "./components/LocationPanelHeader";
+import CommandPalette from "./features/explore/CommandPalette";
+import ScanCard       from "./features/explore/ScanCard";
+import useSiteScan    from "./features/explore/useSiteScan";
+import useFeederLive  from "./features/feeders/useFeederLive";
+import usePointRoute  from "./features/explore/usePointRoute";
+import RouteCard      from "./features/explore/RouteCard";
+import { buildPlaceIndex } from "./features/explore/places";
+import useConnect     from "./features/connect/useConnect";
+import ConnectCard    from "./features/connect/ConnectCard";
+import CustomerSearch from "./features/connect/CustomerSearch";
 import useNigeriaMap  from "./hooks/useNigeriaMap";
+import useDockablePanel from "./hooks/useDockablePanel";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { CI_CUSTOMERS } from "./data";
 
 // OpenFreeMap — free vector basemaps, no API key required.
 const BASEMAP = {
@@ -27,15 +38,19 @@ export default function App() {
     typeof window === "undefined" || !window.matchMedia("(max-width: 639px)").matches
   );
   const mapAreaRef  = useRef(null);
-  const dragControls = useDragControls();
+  const finderCardRef = useRef(null);
+  const openSidebar = useCallback(() => setSidebarOpen(true), []);
+  // Add Location: floating over the map, docked in the sidebar, or closed.
+  const finder = useDockablePanel({
+    storageKey: "gis:location-panel", mapAreaRef, cardRef: finderCardRef, sidebarOpen, openSidebar,
+  });
 
   const {
-    containerRef, mapReady, coords, zoom,
-    mode, changeMode,
+    containerRef, mapRef, mapReady, coords, zoom, getGridSubstations,
     layerVis, toggleLayer,
     selectedFeature, analysisText, bufferCount,
     pins, addPin, flyToPin, removePin, clearPins,
-    runNearestGenco, clearAnalysis, exportGeoJSON,
+    exportGeoJSON,
     gridStatus, gridError, gridParties, gridLossModels, gridAtccScenarios,
     gridRouteResult, gridBestSource, gridPresetGenco, gridPresetDest, gridNearby,
     computeGridRoute, computeGridBestSource, clearGridRoute, applyCustomRoute,
@@ -58,22 +73,70 @@ export default function App() {
 
   const handleThemeToggle = () => setIsDark(d => !d);
 
-  const visibleCount = Object.values(layerVis).filter(Boolean).length;
+  // ── Explore: command palette + site scanner ──────────────────────────────
+  const [paletteOpen, setPaletteOpen] = useState(false);
+  const feeder = useFeederLive(); // live DisCo feeder data, or the labelled snapshot
+  const locate = useCallback((name, kind) => {
+    const list = kind === "substation" ? getGridSubstations() : gridParties.gencos;
+    const hit = list.find(x => x.name === name);
+    return hit && hit.lat != null ? { lat: hit.lat, lon: hit.lon } : null;
+  }, [getGridSubstations, gridParties]);
+  const scanner = useSiteScan({ mapRef, mapReady, locate, offtakers: gridParties.offtakers, getSubstations: getGridSubstations });
+
+  // Point-to-point routing (Explore → "A to B"). Only one Explore card is
+  // open at a time: starting a route closes the scan and vice versa.
+  const planner = usePointRoute({ mapRef, mapReady, getSubstations: getGridSubstations, offtakers: gridParties.offtakers });
+  const placeIndex = useMemo(
+    () => buildPlaceIndex({ gridParties, substations: gridStatus === "ready" ? getGridSubstations() : [], pins }),
+    [gridParties, gridStatus, getGridSubstations, pins]);
+  // Connect a customer — the central workflow: find them, see what
+  // infrastructure is near, visualise the connection, get an indication.
+  const connect = useConnect({ mapRef, mapReady });
+
+  const startRoute = (from = null, to = null) => { connect.close(); scanner.clear(); scanner.disarm(); planner.start(from, to); };
+  const scanPlace = (lat, lng, label) => { connect.close(); planner.close(); scanner.scanAt(lat, lng, label); };
+  const findCustomer = (place, opts) => { scanner.clear(); scanner.disarm(); planner.close(); connect.setCustomer(place, opts); };
+  const dropCustomerPin = () => { scanner.clear(); scanner.disarm(); planner.close(); connect.startDrop(); };
+  const customerPlace = () => connect.customer && {
+    kind: "site", name: connect.label || connect.customer.name || "Customer", lat: connect.customer.lat, lng: connect.customer.lng, state: connect.customer.state,
+  };
+  const scanSitePlace = () => {
+    const s = scanner.scan;
+    return s && { kind: "site", name: s.label || s.location?.place || `${s.lat.toFixed(3)}, ${s.lng.toFixed(3)}`, lat: s.lat, lng: s.lng };
+  };
+
+  useEffect(() => {
+    const onKey = (e) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") { e.preventDefault(); setPaletteOpen(o => !o); }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
+  const routeFromScan = (best) => {
+    const s = scanner.scan;
+    if (!best || !s) return;
+    const label = s.label || s.location?.place || "Scanned site";
+    computeGridRoute({ genco: best.genco, lat: s.lat, lng: s.lng, label });
+    setSidebarOpen(true); // the route's numbers land in the sidebar calculator
+  };
 
   return (
     <TooltipProvider delayDuration={200}>
     <div className="flex flex-col bg-background text-foreground" style={{ height: "100%" }}>
       <Topbar
-        mode={mode}
-        onModeChange={changeMode}
-        onNearestGenco={runNearestGenco}
-        onClear={clearAnalysis}
+        onExplore={() => (scanner.armed ? scanner.disarm() : setPaletteOpen(true))}
+        scanArmed={scanner.armed}
         onExport={exportGeoJSON}
-        visibleCount={visibleCount}
-        pinCount={pins.length}
-        ciCount={CI_CUSTOMERS.length}
+        gridParties={gridParties}
+        feeder={feeder}
         isDark={isDark}
         onThemeToggle={handleThemeToggle}
+      />
+      <CommandPalette
+        open={paletteOpen} onOpenChange={setPaletteOpen}
+        gridParties={gridParties} substations={gridStatus === "ready" ? getGridSubstations() : []} pins={pins}
+        onArm={() => { connect.close(); planner.close(); scanner.arm(); }} onScan={scanPlace} onRoute={startRoute}
       />
 
       {/* Workspace */}
@@ -105,6 +168,15 @@ export default function App() {
           onComputeGridBestSource={computeGridBestSource}
           onClearGridRoute={clearGridRoute}
           onApplyCustomRoute={applyCustomRoute}
+          dockedPanel={finder.mode === "docked" && (
+            <div data-testid="location-finder-docked">
+              <LocationPanelHeader docked onDragStart={finder.startDrag} onFloat={finder.float} onClose={finder.close} />
+              <div className="mx-3 rounded-md border border-border">
+                <LocationFinder onAddPin={addPin} />
+              </div>
+            </div>
+          )}
+          dockPreview={finder.overSidebar && finder.mode === "floating"}
         />
 
         {/* Map area */}
@@ -113,32 +185,96 @@ export default function App() {
             <MapView containerRef={containerRef} />
           </div>
 
-          {/* LocationFinder floating card — draggable by its header */}
+          {/* LocationFinder floating card — drag its header onto the sidebar to dock it */}
           <AnimatePresence>
-            {mapReady && (
+            {mapReady && finder.mode === "floating" && (
               <motion.div
+                ref={finderCardRef}
                 data-testid="location-finder-card"
-                drag
-                dragControls={dragControls}
-                dragListener={false}
-                dragMomentum={false}
-                dragElastic={0}
-                dragConstraints={mapAreaRef}
-                initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 12 }}
-                transition={{ duration: 0.25, ease: "easeOut" }}
-                className="absolute bottom-10 left-4 w-[220px] rounded-lg border border-border backdrop-blur-sm shadow-xl z-10"
-                style={{ background: "color-mix(in srgb, hsl(var(--card)) 95%, transparent)" }}
+                initial={{ opacity: 0, y: 12 }} animate={{ opacity: finder.overSidebar ? 0.6 : 1, y: 0 }} exit={{ opacity: 0, y: 12 }}
+                transition={{ duration: finder.dragging ? 0.1 : 0.25, ease: "easeOut" }}
+                className={`absolute w-[220px] rounded-lg border border-border backdrop-blur-sm shadow-xl
+                  ${finder.dragging ? "z-[60]" : "z-[25]"} ${finder.pos ? "" : "bottom-10 left-4"}`}
+                style={{
+                  background: "color-mix(in srgb, hsl(var(--card)) 95%, transparent)",
+                  ...(finder.pos && { left: finder.pos.x, top: finder.pos.y }),
+                }}
               >
-                <div
-                  onPointerDown={(e) => dragControls.start(e)}
-                  className="flex items-center gap-1.5 px-3 pt-2.5 pb-1.5 border-b border-border rounded-t-lg cursor-grab active:cursor-grabbing select-none"
-                >
-                  <MapPin className="h-3 w-3 text-muted-foreground" />
-                  <p className="flex-1 text-[9px] font-bold uppercase tracking-widest text-muted-foreground">Add Location</p>
-                  <DotsSixVertical className="h-3.5 w-3.5 text-muted-foreground/50" />
-                </div>
+                <LocationPanelHeader
+                  onDragStart={finder.startDrag} onDock={finder.dock} onClose={finder.close}
+                />
                 <LocationFinder onAddPin={addPin} />
               </motion.div>
+            )}
+          </AnimatePresence>
+
+          {/* Closed — a small button brings it back where it was */}
+          {mapReady && finder.mode === "closed" && (
+            <button
+              type="button"
+              onClick={finder.float}
+              title="Add Location"
+              aria-label="Open Add Location"
+              className="absolute bottom-10 left-4 z-10 flex h-8 w-8 items-center justify-center rounded-full border border-border bg-card text-muted-foreground shadow-lg hover:text-primary transition-colors"
+            >
+              <MapPin className="h-4 w-4" />
+            </button>
+          )}
+
+          {/* Armed hint */}
+          <AnimatePresence>
+            {scanner.armed && (
+              <motion.div
+                initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }}
+                className="pointer-events-none absolute left-1/2 top-3 z-[27] flex -translate-x-1/2 items-center gap-2 rounded-full border border-primary/40 bg-card/95 px-3.5 py-1.5 text-xs font-medium text-foreground shadow-lg backdrop-blur"
+              >
+                <Crosshair className="h-3.5 w-3.5 text-primary" weight="bold" />
+                Click anywhere on the map to scan it
+                <kbd className="rounded border border-border px-1 font-mono text-[10px] text-muted-foreground">Esc</kbd>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          {/* Scan result */}
+          <AnimatePresence>
+            {scanner.scan && (
+              <ScanCard
+                key={`${scanner.scan.lat},${scanner.scan.lng}`}
+                scan={scanner.scan}
+                feeder={feeder}
+                onClose={scanner.clear}
+                onRescan={() => { scanner.clear(); scanner.arm(); }}
+                onRoute={routeFromScan}
+                onPin={() => addPin(scanner.scan.lng, scanner.scan.lat, scanner.scan.label || scanner.scan.location?.place || "Scanned site")}
+                onPlanRoute={() => startRoute(scanSitePlace(), null)}
+              />
+            )}
+          </AnimatePresence>
+
+          {/* Connect a customer: search bar + card */}
+          {mapReady && (
+            <CustomerSearch index={placeIndex} onSelect={findCustomer} onDropPin={dropCustomerPin} dropping={connect.dropping} />
+          )}
+          <AnimatePresence>
+            {connect.open && (
+              <ConnectCard
+                connect={connect}
+                onClose={connect.close}
+                onSources={() => { const p = customerPlace(); if (p) scanPlace(p.lat, p.lng, p.name); }}
+                onRoute={() => startRoute(null, customerPlace())}
+                onPin={() => { const p = customerPlace(); if (p) addPin(p.lng, p.lat, p.name); }}
+              />
+            )}
+          </AnimatePresence>
+
+          {/* Point-to-point route */}
+          <AnimatePresence>
+            {planner.open && (
+              <RouteCard
+                planner={planner} index={placeIndex} feeder={feeder}
+                onClose={planner.close}
+                onScan={(p) => scanPlace(p.lat, p.lng, p.name)}
+              />
             )}
           </AnimatePresence>
 

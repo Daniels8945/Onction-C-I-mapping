@@ -4,7 +4,11 @@ import { cn } from "@/lib/utils";
 
 const ScrollArea = React.forwardRef(({ className, children, ...props }, ref) => (
   <ScrollAreaPrimitive.Root ref={ref} className={cn("relative overflow-hidden", className)} {...props}>
-    <ScrollAreaPrimitive.Viewport className="h-full w-full rounded-[inherit]">
+    {/* Radix wraps children in a `display: table` div that grows to its widest
+        child's min-content, overflowing the viewport sideways (clipping the
+        sidebar's switches). Block + hidden x-overflow keeps content at the
+        viewport width so truncate/flex-1 can actually shrink. */}
+    <ScrollAreaPrimitive.Viewport className="h-full w-full rounded-[inherit] !overflow-x-hidden [&>div]:!block">
       {children}
     </ScrollAreaPrimitive.Viewport>
     <ScrollBar />

@@ -25,6 +25,11 @@ services:
       - ./osrm-data:/data
     command: osrm-routed --algorithm mld /data/nigeria-latest.osrm
     networks: [mapping]
+    # Opt-in: without the preprocessed data this container just crash-loops.
+    # deploy.sh turns the profile on automatically once osrm-data/ is built;
+    # by hand: `docker compose --profile osrm up -d`. Without it the API falls
+    # back to straight-line last-mile distances.
+    profiles: [osrm]
     # No host port published — only the api container talks to this, over the
     # internal network. Build the /data/*.osrm files first with
     # server/scripts/build-osrm-data.sh, or this has nothing to serve.
@@ -43,6 +48,25 @@ services:
         condition: service_healthy
     ports:
       - "${MAPPING_BIND_ADDR:-127.0.0.1}:${MAPPING_API_PORT:-4001}:4000"
+    networks: [mapping]
+
+  # Records the live feeder-compliance API once a minute into the db (see
+  # server/src/poller.js). Same image as `api`; no ports — it only makes
+  # outbound calls. Without FEEDER_API_KEY in .env it sits idle, not crashing.
+  poller:
+    build: ./server
+    container_name: mapping-poller
+    restart: unless-stopped
+    command: ["node", "src/poller.js"]
+    environment:
+      DATABASE_URL: postgres://mapping:${MAPPING_DB_PASSWORD:-mapping_dev}@db:5432/mapping_grid
+      FEEDER_API_KEY: ${FEEDER_API_KEY:-}
+      FEEDER_POLL_INTERVAL_S: ${FEEDER_POLL_INTERVAL_S:-60}
+      FEEDER_RAW_RETENTION_DAYS: ${FEEDER_RAW_RETENTION_DAYS:-14}
+      TZ: UTC
+    depends_on:
+      db:
+        condition: service_healthy
     networks: [mapping]
 
   web:
