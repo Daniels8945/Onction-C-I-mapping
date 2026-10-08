@@ -6,3 +6,7 @@ deploy
 .env
 .env.local
 *.log
+blender
+e2e
+test-results
+playwright-report

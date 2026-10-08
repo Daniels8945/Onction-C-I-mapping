@@ -40,18 +40,22 @@ export async function loadGraph() {
     pool.query("SELECT name, voltage_kv, lat::float AS lat, lon::float AS lon, is_injection, status FROM substation"),
     // Only "existing" corridors are real, built lines — ongoing/proposed ones
     // (e.g. the not-yet-built Kano-Katsina-Sokoto-Birnin Kebbi stretch) are
-    // stored for the map's reference layer but must never carry a route.
-    pool.query("SELECT from_node, to_node, km::float AS km FROM grid_edge WHERE status = 'existing'"),
+    // stored for the map's reference layer (kept below as `corridors`) but
+    // must never carry a route.
+    pool.query("SELECT from_node, to_node, km::float AS km, status FROM grid_edge"),
   ]);
 
   for (const s of substations) Object.assign(s, locate(s.lat, s.lon)); // + state, lga
   const nodes = new Map(substations.map((s) => [s.name, s]));
   const adjacency = new Map(substations.map((s) => [s.name, []]));
   for (const e of edges) {
+    if (e.status !== "existing") continue;
     adjacency.get(e.from_node)?.push({ to: e.to_node, km: e.km });
     adjacency.get(e.to_node)?.push({ to: e.from_node, km: e.km });
   }
-  const graph = { nodes, adjacency };
+  // Every corridor, built or not — for showing what's near a site; only
+  // `adjacency` (built lines) is ever routed over.
+  const graph = { nodes, adjacency, corridors: edges.filter(e => nodes.has(e.from_node) && nodes.has(e.to_node)) };
   cached = { at: Date.now(), graph };
   return graph;
 }

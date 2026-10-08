@@ -1,4 +1,5 @@
 import { useState, useMemo, useEffect, useRef } from "react";
+import maplibregl from "maplibre-gl";
 import { MagnifyingGlass, CircleNotch, MapPin, PushPinSimple, X, Buildings, Factory, Lightning, Plug, Power, PushPin } from "@phosphor-icons/react";
 import usePlaceSearch, { placeSubtitle } from "@/lib/usePlaceSearch";
 import { searchPlaces, KIND_LABEL } from "@/features/explore/places";
@@ -8,6 +9,9 @@ import { searchPlaces, KIND_LABEL } from "@/features/explore/places";
 // substations) and then businesses / estates / addresses / settlements via
 // the server geocoder, with the confidence of each match. Coordinates work
 // too ("6.82, 3.63"), and "Drop a pin" covers places no source knows.
+// While the list is open, each place result is previewed on the map as a
+// numbered dot (the highlighted one larger) — "Dangote" has a dozen sites,
+// and where each one is tells them apart.
 
 const KIND_ICON = { genco: Lightning, plant: Power, offtaker: Factory, substation: Plug, disco: Buildings, ci: Factory, pin: PushPin };
 const CONF = {
@@ -27,7 +31,30 @@ export function ConfidenceBadge({ confidence, precision }) {
   );
 }
 
-export default function CustomerSearch({ index, onSelect, onDropPin, dropping, compact }) {
+// Numbered preview dots for the place results; the active one emphasised.
+function usePreviewDots(mapRef, places, activePlace, show) {
+  const dots = useRef([]);
+  useEffect(() => {
+    const map = mapRef?.current;
+    dots.current.forEach(m => m.remove());
+    dots.current = [];
+    if (!map || !show) return;
+    dots.current = places.map((p, i) => {
+      const el = document.createElement("div");
+      el.className = "search-dot";
+      el.dataset.testid = "search-dot";
+      el.textContent = String(i + 1);
+      el.title = p.name;
+      return new maplibregl.Marker({ element: el }).setLngLat([p.lng, p.lat]).addTo(map);
+    });
+    return () => { dots.current.forEach(m => m.remove()); dots.current = []; };
+  }, [mapRef, places, show]);
+  useEffect(() => {
+    dots.current.forEach((m, i) => m.getElement().classList.toggle("search-dot--active", i === activePlace));
+  }, [activePlace, places, show]);
+}
+
+export default function CustomerSearch({ index, onSelect, onDropPin, dropping, compact, mapRef }) {
   const [text, setText] = useState("");
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState(0);
@@ -57,6 +84,8 @@ export default function CustomerSearch({ index, onSelect, onDropPin, dropping, c
     { group: "action", kind: "drop", name: "Drop a pin on the map", sub: "For a site no search knows — click its location" },
   ], [records, results]);
   useEffect(() => { setActive(0); }, [q, results.length]);
+  const activePlace = options[active]?.group === "places" ? active - records.length : -1;
+  usePreviewDots(mapRef, results, activePlace, open && q.length >= 3 && results.length > 0);
 
   const choose = (o) => {
     if (!o) return;
@@ -131,8 +160,9 @@ export default function CustomerSearch({ index, onSelect, onDropPin, dropping, c
                   <>
                     {status === "loading" && !results.length && <p className="px-2.5 py-2 text-[11px] text-muted-foreground">Searching businesses and addresses…</p>}
                     {noConfident && (
-                      <p className="px-2.5 py-2 text-[11px] leading-relaxed text-muted-foreground">
-                        No confident match{results.length ? " (only weak ones above)" : ""}. Try adding the town or state, or drop a pin.
+                      <p data-testid="search-no-match" className="px-2.5 py-2 text-[11px] leading-relaxed text-muted-foreground">
+                        {results.length ? "No confident match (only weak ones above)." : `Nothing found for "${q}".`} Try the town, LGA or state to get
+                        close — then drag the pin to the site — or drop a pin where the customer is.
                       </p>
                     )}
                     {status === "error" && <p className="px-2.5 py-2 text-[11px] text-red-400">Search unavailable: {errors[0]}</p>}
@@ -149,8 +179,11 @@ export default function CustomerSearch({ index, onSelect, onDropPin, dropping, c
                     <Icon className="h-3.5 w-3.5" />
                   </span>
                   <div className="min-w-0 flex-1">
-                    <p className="truncate text-[13px] font-medium text-foreground">{o.name}</p>
-                    {o.sub && <p className="truncate text-[11px] text-muted-foreground">{o.sub}</p>}
+                    <p className="flex items-center gap-1.5 truncate text-[13px] font-medium text-foreground">
+                      {o.kind === "place" && <span className="flex h-4 min-w-4 flex-shrink-0 items-center justify-center rounded-full bg-primary/20 px-1 text-[9px] font-bold text-primary">{i - records.length + 1}</span>}
+                      <span className="truncate">{o.name}</span>
+                    </p>
+                    {(o.sub || o.type_label) && <p className="truncate text-[11px] text-muted-foreground">{[o.type_label, o.sub].filter(Boolean).join(" · ")}</p>}
                     {o.kind === "place" && o.confidence !== "high" && <p className="truncate text-[10px] text-muted-foreground/80">{o.confidence_reason}</p>}
                   </div>
                   {o.kind === "place" && <ConfidenceBadge confidence={o.confidence} precision={o.precision} />}

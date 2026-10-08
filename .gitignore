@@ -13,3 +13,7 @@ qgis-source/
 # NIGERIAN MAP SHOWING FIVE EXISTING AND ONE ON-GOING TRANSMISSION LINE LOOPS.pdf
 # Playwright MCP test screenshots/snapshots
 .playwright-mcp/
+
+# Playwright output
+test-results/
+playwright-report/
