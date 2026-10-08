@@ -25,8 +25,13 @@ export const DISTANCE_BANDS = [
   { maxKm: Infinity, level: "gap", title: "Infrastructure gap",
     summary: (s, km) => `The nearest grid supply point, ${s}, is ${km} km away. This looks like an infrastructure gap: new infrastructure (e.g. a new substation or major extension) or on-site generation may be needed.` },
 ];
-const CANDIDATE_RADIUS_KM = 150;
-const MAX_CANDIDATES = 10;
+// The search radius around the customer: the user picks it (RADIUS_OPTIONS
+// in the UI); infrastructure inside it is listed and drawn. The suggested
+// supply point is always given, even when it lies outside.
+export const DEFAULT_RADIUS_KM = 50;
+export const MAX_RADIUS_KM = 300;
+const MAX_CANDIDATES = 12;
+const MAX_LINES = 25;
 const r1 = (x) => Math.round(x * 10) / 10;
 
 // Distance from a point to a line segment, km (local equirectangular).
@@ -38,6 +43,23 @@ function pointToSegmentKm(lat, lng, a, b) {
   const t = dx || dy ? Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / (dx * dx + dy * dy))) : 0;
   const cx = ax + t * dx, cy = ay + t * dy;
   return { km: Math.hypot(px - cx, py - cy), point: [cx / kx, cy / ky] };
+}
+
+// Line voltage isn't in the dataset; a corridor runs at the lower of its two
+// substations' voltages (a 330 kV station feeding a 132 kV one does so at
+// 132 kV), and the response says it's inferred.
+function describeCorridor(graph, e, lat, lng, customerState) {
+  const a = graph.nodes.get(e.from_node), b = graph.nodes.get(e.to_node);
+  const d = pointToSegmentKm(lat, lng, a, b);
+  return {
+    from_node: e.from_node, to_node: e.to_node, status: e.status, line_km: r1(e.km),
+    voltage_kv: Math.min(a.voltage_kv, b.voltage_kv), voltage_inferred: true,
+    distance_km: r1(d.km), point: d.point,
+    from_state: a.state || null, to_state: b.state || null,
+    crosses_state: !!a.state && !!b.state && a.state !== b.state,
+    in_customer_state: !!customerState && (a.state === customerState || b.state === customerState),
+    coordinates: [[a.lon, a.lat], [b.lon, b.lat]],
+  };
 }
 
 function describe(graph, s, lat, lng, customerState) {
@@ -54,19 +76,34 @@ function describe(graph, s, lat, lng, customerState) {
   };
 }
 
-export function assessConnection(graph, { lat, lng, scopeState }) {
+export function assessConnection(graph, { lat, lng, scopeState, radiusKm = DEFAULT_RADIUS_KM }) {
   const { state, lga } = locate(lat, lng);
   const customerState = state;
   const scope = scopeState === undefined ? customerState : scopeState; // default: the customer's own state
 
   const all = [...graph.nodes.values()].map(s => describe(graph, s, lat, lng, customerState)).sort((a, b) => a.distance_km - b.distance_km);
-  const candidates = all.filter(c => c.distance_km <= CANDIDATE_RADIUS_KM).slice(0, MAX_CANDIDATES);
+  const inRadius = all.filter(c => c.distance_km <= radiusKm);
+  // Within a state context, that state's infrastructure is listed first —
+  // the filter is about what the user is exploring, not a claim that power
+  // can't cross the boundary (out-of-state candidates stay, flagged).
+  const inScopeFirst = (list) => scope ? [...list.filter(c => c.state === scope), ...list.filter(c => c.state !== scope)] : list;
+  const candidates = inScopeFirst(inRadius).slice(0, MAX_CANDIDATES).map(c => ({ ...c, in_radius: true }));
 
   // Recommended: the nearest grid supply point, preferring the customer's
   // state under the same rule routing uses.
   const pick = nearestInjectionSubstation(graph, lat, lng, { scopeState: scope });
-  const recommended = pick ? all.find(c => c.name === pick.node) : null;
-  if (recommended && !candidates.includes(recommended)) candidates.push(recommended);
+  const recommendedRow = pick ? all.find(c => c.name === pick.node) : null;
+  // Nothing inside the radius: still show the nearest few beyond it, so
+  // the user sees how far the network is rather than an empty list.
+  if (!candidates.length) all.slice(0, 3).forEach(c => candidates.push({ ...c, in_radius: false }));
+  let recommended = recommendedRow && candidates.find(c => c.name === recommendedRow.name);
+  if (recommendedRow && !recommended) { recommended = { ...recommendedRow, in_radius: recommendedRow.distance_km <= radiusKm }; candidates.push(recommended); }
+  const ordered = inScopeFirst(candidates);
+
+  // Transmission corridors near the site, built or not (status says which).
+  const corridors = (graph.corridors || []).map(e => describeCorridor(graph, e, lat, lng, customerState))
+    .sort((a, b) => a.distance_km - b.distance_km);
+  const nearbyLines = corridors.filter(l => l.distance_km <= radiusKm).slice(0, MAX_LINES);
 
   // Nearest built transmission line (drawn as straight spans between
   // substations, so this is approximate).
@@ -104,12 +141,27 @@ export function assessConnection(graph, { lat, lng, scopeState }) {
   }
   considerations.push("The 33/11 kV distribution network isn't in the dataset — a nearer DisCo feeder connection may exist.");
 
+  // What's inside the radius, in words — the honest "is anything near?".
+  const supplyIn = inRadius.filter(c => c.supply_point);
+  const builtLinesIn = nearbyLines.filter(l => l.status === "existing");
+  let radiusMessage;
+  if (!inRadius.length && !nearbyLines.length) radiusMessage = `No transmission infrastructure identified within ${radiusKm} km in the network data.`;
+  else if (!supplyIn.length) radiusMessage = `No grid supply point identified within ${radiusKm} km${inRadius.length ? ` (${inRadius.length} other substation${inRadius.length > 1 ? "s" : ""} nearby)` : ""}.`;
+  else radiusMessage = `${supplyIn.length} grid supply point${supplyIn.length > 1 ? "s" : ""} and ${builtLinesIn.length} built line${builtLinesIn.length === 1 ? "" : "s"} within ${radiusKm} km.`;
+
   return {
     customer: { lat, lng, state, lga },
     scope_state: scope || null,
-    candidates: candidates.map(c => ({ ...c, recommended: c === recommended })),
+    radius_km: radiusKm,
+    radius_summary: {
+      substations: inRadius.length, supply_points: supplyIn.length, lines: nearbyLines.length, built_lines: builtLinesIn.length,
+      nearest_substation_km: all[0]?.distance_km ?? null, nearest_line_km: corridors[0]?.distance_km ?? null,
+      empty: !supplyIn.length, message: radiusMessage,
+    },
+    candidates: ordered.map(c => ({ ...c, recommended: c === recommended })),
     recommended: recommended?.name || null,
     nearest_line: nearestLine,
+    nearby_lines: nearbyLines,
     assessment: {
       ...assessment, considerations,
       bands: DISTANCE_BANDS.map(b => ({ level: b.level, title: b.title, max_km: Number.isFinite(b.maxKm) ? b.maxKm : null })),

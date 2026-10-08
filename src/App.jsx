@@ -18,6 +18,7 @@ import { buildPlaceIndex } from "./features/explore/places";
 import useConnect     from "./features/connect/useConnect";
 import ConnectCard    from "./features/connect/ConnectCard";
 import CustomerSearch from "./features/connect/CustomerSearch";
+import ConnectViewControls from "./features/connect/ConnectViewControls";
 import useNigeriaMap  from "./hooks/useNigeriaMap";
 import useDockablePanel from "./hooks/useDockablePanel";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -253,7 +254,7 @@ export default function App() {
 
           {/* Connect a customer: search bar + card */}
           {mapReady && (
-            <CustomerSearch index={placeIndex} onSelect={findCustomer} onDropPin={dropCustomerPin} dropping={connect.dropping} />
+            <CustomerSearch index={placeIndex} onSelect={findCustomer} onDropPin={dropCustomerPin} dropping={connect.dropping} mapRef={mapRef} />
           )}
           <AnimatePresence>
             {connect.open && (
@@ -266,6 +267,8 @@ export default function App() {
               />
             )}
           </AnimatePresence>
+
+          {connect.open && connect.customer && <ConnectViewControls connect={connect} />}
 
           {/* Point-to-point route */}
           <AnimatePresence>

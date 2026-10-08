@@ -20,7 +20,8 @@ export const gridApi = {
   geocodeSearch: (q, opts) => get(`/api/geocode/search?${new URLSearchParams({ q })}`, opts),
   geocodeReverse: (lat, lng, opts) => get(`/api/geocode/reverse?${new URLSearchParams({ lat, lng })}`, opts),
   locate: (lat, lng, opts) => get(`/api/locate?${new URLSearchParams({ lat, lng })}`, opts),
-  connect: (lat, lng, scopeState, opts) => get(`/api/connect?${new URLSearchParams({ lat, lng, ...(scopeState !== undefined && { scopeState: scopeState || "any" }) })}`, opts),
+  connect: (lat, lng, scopeState, { radiusKm, ...opts } = {}) => get(`/api/connect?${new URLSearchParams({ lat, lng,
+    ...(scopeState !== undefined && { scopeState: scopeState || "any" }), ...(radiusKm != null && { radiusKm }) })}`, opts),
   connectLine: (lat, lng, substation, opts) => get(`/api/connect/line?${new URLSearchParams({ lat, lng, substation })}`, opts),
   // From a GenCo (genco) or any point (fromLat/fromLng); to a named
   // offtaker/DisCo (dest) or any point (lat/lng).

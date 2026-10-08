@@ -8,7 +8,7 @@ import {
 } from "./grid.js";
 import { locate, inNigeria, normaliseStateName } from "./geo/admin.js";
 import { searchPlaces, reversePlace, geocoderSources } from "./geo/geocode.js";
-import { assessConnection, connectionLine } from "./connect.js";
+import { assessConnection, connectionLine, DEFAULT_RADIUS_KM, MAX_RADIUS_KM } from "./connect.js";
 import { roadRoute } from "./osrm.js";
 import { feederRouter } from "./feeders/routes.js";
 
@@ -341,14 +341,19 @@ app.get("/api/locate", (req, res, next) => {
   } catch (e) { next(e); }
 });
 
-// GET /api/connect?lat=&lng=[&scopeState=Ogun|any]
+// GET /api/connect?lat=&lng=[&scopeState=Ogun|any][&radiusKm=50]
 // Nearby infrastructure, a suggested supply point and a planning indication.
 app.get("/api/connect", async (req, res, next) => {
   try {
     const pt = parsePoint(req.query.lat, req.query.lng, "Customer location");
     if (!pt) throw new BadRequest("lat and lng are required");
     const scopeState = req.query.scopeState === "any" ? null : req.query.scopeState ? parseScope(req.query.scopeState) : undefined;
-    res.json(assessConnection(await loadGraph(), { ...pt, scopeState }));
+    let radiusKm = DEFAULT_RADIUS_KM;
+    if (req.query.radiusKm != null && req.query.radiusKm !== "") {
+      radiusKm = Number(req.query.radiusKm);
+      if (!Number.isFinite(radiusKm) || radiusKm < 1 || radiusKm > MAX_RADIUS_KM) throw new BadRequest(`radiusKm must be between 1 and ${MAX_RADIUS_KM}`);
+    }
+    res.json(assessConnection(await loadGraph(), { ...pt, scopeState, radiusKm }));
   } catch (e) { next(e); }
 });
 

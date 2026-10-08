@@ -20,6 +20,9 @@ MAPPING_BIND_ADDR=127.0.0.1
 # Key for the live feeder-compliance API — the poller container records it
 # once a minute. Leave blank and the poller just idles.
 FEEDER_API_KEY=
+# Google Maps key (Places API (New) + Geocoding API) for customer search.
+# Leave blank and search uses OpenStreetMap only.
+GOOGLE_MAPS_API_KEY=
 EOF
   echo "Wrote .env — edit MAPPING_CORS_ORIGIN to https://onctionenergy.com/ once it's live."
 fi

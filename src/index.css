@@ -224,3 +224,34 @@ html.dark .maplibregl-ctrl-group button span { filter: invert(1); opacity: 0.6; 
   .scan-pulse span, .explore-btn::after { animation: none; }
   .scan-pulse span { opacity: 0; }
 }
+
+/* Connect: hover card for substations, lines and the customer (2D and 3D). */
+.connect-tip {
+  position: absolute; z-index: 30; pointer-events: none; max-width: 240px;
+  padding: 8px 10px; border-radius: 10px;
+  background: color-mix(in srgb, hsl(var(--card)) 96%, transparent);
+  border: 1px solid hsl(var(--border)); box-shadow: 0 8px 24px rgba(0,0,0,0.35);
+  color: hsl(var(--foreground)); font: 11px/1.4 system-ui, sans-serif;
+}
+.connect-tip__kind { font-size: 9px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; color: hsl(var(--primary)); }
+.connect-tip__title { margin-top: 1px; font-size: 12.5px; font-weight: 600; }
+.connect-tip__row { margin-top: 2px; color: hsl(var(--muted-foreground)); }
+.connect-tip__hint { margin-top: 5px; font-size: 10px; color: hsl(var(--primary) / 0.9); }
+
+/* Customer search: numbered preview of each place result on the map. */
+.search-dot {
+  display: flex; align-items: center; justify-content: center; min-width: 20px; height: 20px; padding: 0 5px;
+  border-radius: 9999px; background: #0b1220; color: #fff; border: 2px solid hsl(var(--primary));
+  font: 700 10px/1 system-ui, sans-serif; box-shadow: 0 2px 8px rgba(0,0,0,0.45); pointer-events: none;
+  transition: transform 120ms ease;
+}
+.search-dot--active { transform: scale(1.35); background: hsl(var(--primary)); color: #04121f; z-index: 2; }
+
+/* In 3D the customer's works model sits on the point: lift the pin above it
+   on a thin stem so both stay visible (the pin is still the drag handle). */
+.connect-3d-on .customer-pin { transform-origin: bottom center; }
+.connect-3d-on .customer-pin::after {
+  content: ""; display: block; width: 2px; height: 34px; margin-top: -2px;
+  background: linear-gradient(#fff, rgba(255,255,255,0.15));
+}
+.connect-3d-on .customer-pin__head { width: 18px; height: 18px; border-width: 2px; }
