@@ -4,6 +4,9 @@
 // Sources, merged and de-duplicated:
 //   google     Google Places Text Search (New) — only when GOOGLE_MAPS_API_KEY
 //              is set on the server. Best coverage of Nigerian businesses.
+//              Reverse lookups use the Google Geocoding API too, falling back
+//              to Nominatim. Needs "Places API (New)" + "Geocoding API"
+//              enabled on the key's Google Cloud project.
 //   osm        Photon (fuzzy, OpenStreetMap) + Nominatim (OpenStreetMap).
 //              Free; good for towns, streets and well-mapped sites, patchy for
 //              industrial estates and many businesses.
@@ -16,7 +19,8 @@
 
 import { locate, stateInText, stateBBox, STATE_NAMES } from "./admin.js";
 
-const GOOGLE_KEY = process.env.GOOGLE_MAPS_API_KEY || "";
+// GOOGLE_MAPS_API_KEYS (plural) is accepted too — an easy slip in .env.
+const GOOGLE_KEY = (process.env.GOOGLE_MAPS_API_KEY || process.env.GOOGLE_MAPS_API_KEYS || "").trim();
 const USER_AGENT = `OnctionGridAtlas/1.0 (${process.env.GEOCODER_CONTACT || "https://onctionenergy.com"})`;
 const NG_BBOX = [2.6, 4.2, 14.7, 13.9]; // minLng, minLat, maxLng, maxLat
 const TIMEOUT_MS = 8000;
@@ -149,6 +153,14 @@ async function nominatim(query, stateHint) {
   });
 }
 
+// Google's error bodies say what's wrong ("API not enabled", "key
+// restricted…") — surface that rather than a bare status code.
+async function googleError(r, what) {
+  let msg = "";
+  try { const d = await r.json(); msg = d.error?.message || d.error_message || ""; } catch {}
+  return new Error(`${what} ${r.status}${msg ? ` — ${msg.slice(0, 160)}` : ""}`);
+}
+
 // Google Places API (New) Text Search, restricted to Nigeria.
 async function google(query, stateHint) {
   const bb = (stateHint && stateBBox(stateHint)) || NG_BBOX;
@@ -156,7 +168,7 @@ async function google(query, stateHint) {
     method: "POST",
     headers: {
       "Content-Type": "application/json", "X-Goog-Api-Key": GOOGLE_KEY,
-      "X-Goog-FieldMask": "places.id,places.displayName,places.formattedAddress,places.location,places.types,places.primaryType",
+      "X-Goog-FieldMask": "places.id,places.displayName,places.formattedAddress,places.location,places.types,places.primaryType,places.businessStatus",
     },
     body: JSON.stringify({
       textQuery: query, regionCode: "NG", maxResultCount: 8,
@@ -164,9 +176,9 @@ async function google(query, stateHint) {
     }),
     signal: AbortSignal.timeout(TIMEOUT_MS),
   });
-  if (!r.ok) throw new Error(`Google Places ${r.status}`);
+  if (!r.ok) throw await googleError(r, "Google Places");
   const d = await r.json();
-  return (d.places || []).map(p => ({
+  return (d.places || []).filter(p => p.businessStatus !== "CLOSED_PERMANENTLY").map(p => ({
     source: "google", provider: "google", id: `google:${p.id}`, name: p.displayName?.text || p.formattedAddress, address: p.formattedAddress || "",
     lat: p.location.latitude, lng: p.location.longitude, category: p.primaryType || p.types?.[0] || "",
     precision: (p.types || []).some(t => AREA_TYPES.has(t) || t.startsWith("administrative_area") || t === "locality") ? "area"
@@ -233,11 +245,32 @@ export async function searchPlaces(query, { limit = 8 } = {}) {
   });
 }
 
-// A dropped / dragged pin → nearest address (Nominatim) + our state / LGA.
+// Google reverse geocode: the most specific named result — a premise or
+// establishment over a street over an area; plus codes are skipped.
+async function googleReverse(lat, lng) {
+  const p = new URLSearchParams({ latlng: `${lat},${lng}`, key: GOOGLE_KEY, region: "ng", language: "en" });
+  const r = await fetch(`https://maps.googleapis.com/maps/api/geocode/json?${p}`, { signal: AbortSignal.timeout(TIMEOUT_MS) });
+  if (!r.ok) throw await googleError(r, "Google Geocoding");
+  const d = await r.json();
+  if (d.status !== "OK") throw new Error(`Google Geocoding ${d.status}${d.error_message ? ` — ${d.error_message}` : ""}`);
+  const hit = d.results.find(x => !x.types.includes("plus_code"));
+  if (!hit) return null;
+  const part = (t) => hit.address_components.find(c => c.types.includes(t))?.long_name;
+  const name = part("premise") || part("establishment") || part("point_of_interest") || part("route")
+    || part("sublocality") || part("neighborhood") || part("locality") || null;
+  return { name, address: hit.formatted_address.replace(/,\s*Nigeria$/, "") };
+}
+
+// A dropped / dragged pin → nearest address (Google when configured, else
+// Nominatim) + our state / LGA.
 export async function reversePlace(lat, lng) {
   const admin = locate(lat, lng);
   const key = `r:${lat.toFixed(4)},${lng.toFixed(4)}`;
   const addr = await cached(key, async () => {
+    if (GOOGLE_KEY) {
+      const g = await googleReverse(lat, lng).catch(e => { console.warn(`[geocode] ${e.message}`); return null; });
+      if (g?.name || g?.address) return g;
+    }
     const d = await nominatimFetch(`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=jsonv2&zoom=17&addressdetails=1`);
     const a = d.address || {};
     return {

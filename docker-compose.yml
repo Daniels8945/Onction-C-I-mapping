@@ -43,6 +43,8 @@ services:
       PORT: 4000
       CORS_ORIGIN: ${MAPPING_CORS_ORIGIN:-*}
       OSRM_URL: http://osrm:5000
+      # Google Places search + reverse geocoding. Blank → OpenStreetMap only.
+      GOOGLE_MAPS_API_KEY: ${GOOGLE_MAPS_API_KEY:-${GOOGLE_MAPS_API_KEYS:-}}
     depends_on:
       db:
         condition: service_healthy
