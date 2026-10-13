@@ -927,6 +927,18 @@ export default function useNigeriaMap({ isDark, BASEMAP } = {}) {
     }
   }, []);
 
+  // The layers the sidebar lists, for All on / All off / Reset. Visibility
+  // only — the data, routes and scans underneath are never touched.
+  const SIDEBAR_LAYERS = ["ci", "discos", "gencos", "traders", ...Object.keys(SUB_STATUS_LAYER_GROUPS), ...Object.keys(EDGE_STATUS_LAYER_GROUPS),
+    ...Object.keys(TCN_LOOP_LAYER_GROUPS), "gridGencos", "gridDiscos", "gridOfftakers"];
+  const allLayers = useCallback((on) => {
+    setLayerVis(prev => ({ ...prev, ...Object.fromEntries(SIDEBAR_LAYERS.map(k => [k, on])) }));
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  const resetView = useCallback(() => {
+    setLayerVis(prev => ({ ...prev, ...Object.fromEntries(SIDEBAR_LAYERS.map(k => [k, !!INIT_VIS[k]])) }));
+    mapRef.current?.flyTo({ center: [8.0, 9.0], zoom: 6, pitch: 0, bearing: 0, duration: 1000 });
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
   const changeMode = useCallback((m) => {
     setMode(m); modeRef.current = m;
     if (mapRef.current) mapRef.current.getCanvas().style.cursor = m === "explore" ? "" : "crosshair";
@@ -1210,11 +1222,12 @@ export default function useNigeriaMap({ isDark, BASEMAP } = {}) {
 
   // For the Explore scanner (src/features/explore), which draws its own layers.
   const getGridSubstations = useCallback(() => gridAtlasDataRef.current?.substations || [], []);
+  const getGridEdges = useCallback(() => gridAtlasDataRef.current?.edges || [], []);
 
   return {
-    containerRef, mapRef, mapReady, coords, zoom, getGridSubstations,
+    containerRef, mapRef, mapReady, coords, zoom, getGridSubstations, getGridEdges,
     mode, changeMode,
-    layerVis, toggleLayer,
+    layerVis, toggleLayer, allLayers, resetView,
     selectedFeature, analysisText, bufferCount,
     pins, addPin, flyToPin, removePin, clearPins,
     runNearestGenco, clearAnalysis, exportGeoJSON, searchAndFly,

@@ -1,4 +1,6 @@
 import { useState } from "react";
+import useMovablePanel from "@/hooks/useMovablePanel";
+import PanelGrip from "@/components/ui/PanelGrip";
 import { CaretUp, CaretDown } from "@phosphor-icons/react";
 import { TCN_LOOPS } from "../data";
 import { TX_LINE_STATUS, SUBSTATION_STATUS, GENCO_ICONS } from "../data/legend";
@@ -44,22 +46,25 @@ function LegendRow({ swatch, label }) {
 // imported from src/data/legend.js, the same constants the map itself paints
 // with, so this panel can never drift out of sync with what's actually drawn.
 export default function MapLegend() {
-  const [collapsed, setCollapsed] = useState(false);
+  // Starts collapsed on phones, where open it would cover half the map.
+  const [collapsed, setCollapsed] = useState(() => typeof window !== "undefined" && window.matchMedia("(max-width: 639px)").matches);
+  const panel = useMovablePanel("legend");
   const existingLoops = TCN_LOOPS.filter(l => l.status !== "ongoing");
   const ongoingLoops  = TCN_LOOPS.filter(l => l.status === "ongoing");
 
   return (
     <div
-      className={`absolute top-24 right-4 z-20 flex w-[235px] flex-col rounded-lg border border-border shadow-xl backdrop-blur-sm ${collapsed ? "" : "bottom-16"}`}
-      style={{ background: "color-mix(in srgb, hsl(var(--card)) 95%, transparent)" }}
+      ref={panel.ref} data-testid="map-legend"
+      className={`absolute top-24 right-4 z-20 flex w-[235px] max-w-[calc(100%-2rem)] flex-col rounded-lg border border-border shadow-xl backdrop-blur-sm ${collapsed ? "" : "bottom-16"}`}
+      style={{ background: "color-mix(in srgb, hsl(var(--card)) 95%, transparent)", ...panel.style }}
     >
-      <button
-        onClick={() => setCollapsed(c => !c)}
-        className="flex flex-shrink-0 items-center gap-1.5 rounded-t-lg border-b border-border px-3 py-2 text-left"
-      >
-        <span className="flex-1 text-[9px] font-bold uppercase tracking-widest text-muted-foreground">TCN Loop Map Legend</span>
-        {collapsed ? <CaretDown className="h-3 w-3 text-muted-foreground" /> : <CaretUp className="h-3 w-3 text-muted-foreground" />}
-      </button>
+      <div className="flex flex-shrink-0 items-center gap-1.5 rounded-t-lg border-b border-border px-3 py-2">
+        <PanelGrip panel={panel} name="Legend" />
+        <button onClick={() => setCollapsed(c => !c)} aria-expanded={!collapsed} className="flex flex-1 items-center gap-1.5 text-left">
+          <span className="flex-1 text-[9px] font-bold uppercase tracking-widest text-muted-foreground">TCN Loop Map Legend</span>
+          {collapsed ? <CaretDown className="h-3 w-3 text-muted-foreground" /> : <CaretUp className="h-3 w-3 text-muted-foreground" />}
+        </button>
+      </div>
 
       {!collapsed && (
         <div className="flex-1 space-y-3 overflow-y-auto px-3 py-2.5">

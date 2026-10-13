@@ -14,6 +14,11 @@ import useSiteScan    from "./features/explore/useSiteScan";
 import useFeederLive  from "./features/feeders/useFeederLive";
 import usePointRoute  from "./features/explore/usePointRoute";
 import RouteCard      from "./features/explore/RouteCard";
+import SubstationCard from "./features/explore/SubstationCard";
+import useSubstationFocus from "./features/explore/useSubstationFocus";
+import useRoute3D from "./features/explore/useRoute3D";
+import useFeederBrowser from "./features/feeders/useFeederBrowser";
+import FeederCard from "./features/feeders/FeederCard";
 import { buildPlaceIndex } from "./features/explore/places";
 import useConnect     from "./features/connect/useConnect";
 import ConnectCard    from "./features/connect/ConnectCard";
@@ -47,8 +52,8 @@ export default function App() {
   });
 
   const {
-    containerRef, mapRef, mapReady, coords, zoom, getGridSubstations,
-    layerVis, toggleLayer,
+    containerRef, mapRef, mapReady, coords, zoom, getGridSubstations, getGridEdges,
+    layerVis, toggleLayer, allLayers, resetView,
     selectedFeature, analysisText, bufferCount,
     pins, addPin, flyToPin, removePin, clearPins,
     exportGeoJSON,
@@ -87,6 +92,9 @@ export default function App() {
   // Point-to-point routing (Explore → "A to B"). Only one Explore card is
   // open at a time: starting a route closes the scan and vice versa.
   const planner = usePointRoute({ mapRef, mapReady, getSubstations: getGridSubstations, offtakers: gridParties.offtakers });
+  const route3d = useRoute3D({
+    mapRef, mapReady, open: planner.open, result: planner.route.status === "ready" ? planner.route.result : null, getSubstations: getGridSubstations,
+  });
   const placeIndex = useMemo(
     () => buildPlaceIndex({ gridParties, substations: gridStatus === "ready" ? getGridSubstations() : [], pins }),
     [gridParties, gridStatus, getGridSubstations, pins]);
@@ -94,10 +102,28 @@ export default function App() {
   // infrastructure is near, visualise the connection, get an indication.
   const connect = useConnect({ mapRef, mapReady });
 
-  const startRoute = (from = null, to = null) => { connect.close(); scanner.clear(); scanner.disarm(); planner.start(from, to); };
-  const scanPlace = (lat, lng, label) => { connect.close(); planner.close(); scanner.scanAt(lat, lng, label); };
-  const findCustomer = (place, opts) => { scanner.clear(); scanner.disarm(); planner.close(); connect.setCustomer(place, opts); };
-  const dropCustomerPin = () => { scanner.clear(); scanner.disarm(); planner.close(); connect.startDrop(); };
+  // Substation focus: a substation and the customers nearest to it. A click
+  // on a substation while a scan is open picks it for that scan instead.
+  const onSubstationClick = (name) => {
+    if (scanner.scan) {
+      const linked = new Set(getGridEdges().filter(e => e.status === "existing").flatMap(e => [e.from_node, e.to_node]));
+      const s = getGridSubstations().find(x => x.name === name);
+      if (s?.status === "existing" && linked.has(name)) { scanner.chooseSupply(name); return; }
+    }
+    if (scanner.scan || planner.open || connect.open) return;
+    subFocus.open(name);
+  };
+  const subFocus = useSubstationFocus({
+    mapRef, mapReady, getSubstations: getGridSubstations, getEdges: getGridEdges, offtakers: gridParties.offtakers, onBaseClick: onSubstationClick,
+  });
+  const feederBrowser = useFeederBrowser({ mapRef, mapReady });
+  const focusSubstation = (name) => { feederBrowser.close(); connect.close(); planner.close(); scanner.clear(); scanner.disarm(); subFocus.open(name); };
+  const openFeeders = () => { subFocus.close(); connect.close(); planner.close(); scanner.clear(); scanner.disarm(); feederBrowser.start(); };
+
+  const startRoute = (from = null, to = null) => { feederBrowser.close(); subFocus.close(); connect.close(); scanner.clear(); scanner.disarm(); planner.start(from, to); };
+  const scanPlace = (lat, lng, label, opts) => { feederBrowser.close(); subFocus.close(); connect.close(); planner.close(); scanner.scanAt(lat, lng, label, opts); };
+  const findCustomer = (place, opts) => { feederBrowser.close(); subFocus.close(); scanner.clear(); scanner.disarm(); planner.close(); connect.setCustomer(place, opts); };
+  const dropCustomerPin = () => { feederBrowser.close(); subFocus.close(); scanner.clear(); scanner.disarm(); planner.close(); connect.startDrop(); };
   const customerPlace = () => connect.customer && {
     kind: "site", name: connect.label || connect.customer.name || "Customer", lat: connect.customer.lat, lng: connect.customer.lng, state: connect.customer.state,
   };
@@ -133,11 +159,14 @@ export default function App() {
         feeder={feeder}
         isDark={isDark}
         onThemeToggle={handleThemeToggle}
+        onFeeders={openFeeders}
       />
       <CommandPalette
         open={paletteOpen} onOpenChange={setPaletteOpen}
         gridParties={gridParties} substations={gridStatus === "ready" ? getGridSubstations() : []} pins={pins}
-        onArm={() => { connect.close(); planner.close(); scanner.arm(); }} onScan={scanPlace} onRoute={startRoute}
+        onArm={() => { feederBrowser.close(); subFocus.close(); connect.close(); planner.close(); scanner.arm(); }} onScan={scanPlace} onRoute={startRoute}
+        onSubstation={focusSubstation}
+        onFeeders={openFeeders}
       />
 
       {/* Workspace */}
@@ -147,6 +176,8 @@ export default function App() {
         <Sidebar
           layerVis={layerVis}
           toggleLayer={toggleLayer}
+          onAllLayers={allLayers}
+          onResetView={resetView}
           selectedFeature={selectedFeature}
           analysisText={analysisText}
           pins={pins}
@@ -248,6 +279,24 @@ export default function App() {
                 onRoute={routeFromScan}
                 onPin={() => addPin(scanner.scan.lng, scanner.scan.lat, scanner.scan.label || scanner.scan.location?.place || "Scanned site")}
                 onPlanRoute={() => startRoute(scanSitePlace(), null)}
+                onChooseSupply={scanner.chooseSupply}
+              />
+            )}
+          </AnimatePresence>
+
+          {/* Feeder browser */}
+          <AnimatePresence>
+            {feederBrowser.open && <FeederCard browser={feederBrowser} />}
+          </AnimatePresence>
+
+          {/* Substation focus */}
+          <AnimatePresence>
+            {subFocus.focus && (
+              <SubstationCard
+                key={subFocus.focus.sub.name}
+                focus={subFocus.focus}
+                onClose={subFocus.close}
+                onScanCustomer={(c) => scanPlace(c.lat, c.lng, c.name, { supplyNode: subFocus.focus.connected ? subFocus.focus.sub.name : null })}
               />
             )}
           </AnimatePresence>
@@ -274,7 +323,7 @@ export default function App() {
           <AnimatePresence>
             {planner.open && (
               <RouteCard
-                planner={planner} index={placeIndex} feeder={feeder}
+                planner={planner} index={placeIndex} feeder={feeder} view3d={route3d}
                 onClose={planner.close}
                 onScan={(p) => scanPlace(p.lat, p.lng, p.name)}
               />

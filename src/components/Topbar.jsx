@@ -7,15 +7,17 @@ import HelpDialog from "@/components/HelpDialog";
 import { feederTotals, formatWat } from "@/features/feeders/useFeederLive";
 import { availabilityOf } from "@/features/explore/siteScan";
 
-function KPI({ value, label, hint, dot }) {
+function KPI({ value, label, hint, dot, onClick, testid }) {
+  const Tag = onClick ? "button" : "div";
   const body = (
-    <div className="flex flex-col items-center px-3 cursor-default">
+    <Tag type={onClick ? "button" : undefined} onClick={onClick} data-testid={testid}
+         className={`flex flex-col items-center px-3 ${onClick ? "cursor-pointer rounded-md hover:bg-accent/60" : "cursor-default"}`}>
       <span className="flex items-center gap-1.5 text-sm font-mono font-bold text-primary leading-none tabular-nums">
         {dot && <span className={`h-1.5 w-1.5 rounded-full ${dot}`} />}
         {value}
       </span>
       <span className="text-[9px] text-muted-foreground uppercase tracking-wider mt-0.5">{label}</span>
-    </div>
+    </Tag>
   );
   if (!hint) return body;
   return (
@@ -31,7 +33,7 @@ const IS_MAC = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(naviga
 const FEED_DOT = { live: "bg-emerald-500 animate-pulse", delayed: "bg-amber-500", snapshot: "bg-sky-500" };
 const FEED_WORD = { live: "Live", delayed: "Delayed — last reading", snapshot: "Snapshot from" };
 
-export default function Topbar({ onExplore, scanArmed, onExport, gridParties, feeder, isDark, onThemeToggle }) {
+export default function Topbar({ onExplore, scanArmed, onExport, gridParties, feeder, isDark, onThemeToggle, onFeeders }) {
   // Decision numbers, not layer counts: how much demand Onction is serving,
   // how much generation is actually free to sell, and how the grid is doing.
   const demandMw = gridParties.offtakers.reduce((a, o) => a + (o.capacity_mw || 0), 0);
@@ -62,8 +64,8 @@ export default function Topbar({ onExplore, scanArmed, onExport, gridParties, fe
         <KPI value={gridParties.gencos.length ? `${freeGencos}/${gridParties.gencos.length}` : "—"} label="GenCos free"
              hint="Onction-engaged GenCos with capacity not yet committed elsewhere." />
         <Separator orientation="vertical" className="h-5" />
-        <KPI value={`${feedersOnPct}%`} label="Feeders on" dot={FEED_DOT[feeder.mode]}
-             hint={`${feeders.online} of ${feeders.feeders} metered DisCo feeders supplying power (${feeders.liveMw} MW), ${feeders.shedding} shedding load with voltage present. ${FEED_WORD[feeder.mode]} ${formatWat(feeder.data.capturedAt)}.`} />
+        <KPI value={`${feedersOnPct}%`} label="Feeders on" dot={FEED_DOT[feeder.mode]} onClick={onFeeders} testid="feeders-kpi"
+             hint={`${feeders.online} of ${feeders.feeders} metered DisCo feeders supplying power (${feeders.liveMw} MW), ${feeders.shedding} shedding load with voltage present. ${FEED_WORD[feeder.mode]} ${formatWat(feeder.data.capturedAt)}. Click to browse every feeder.`} />
       </div>
 
       <Separator orientation="vertical" className="h-6" />

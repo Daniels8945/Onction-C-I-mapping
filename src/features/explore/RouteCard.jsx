@@ -8,18 +8,23 @@ import PlacePicker from "./PlacePicker";
 import { FROM_BIAS, TO_BIAS } from "./places";
 import { END_COLORS } from "./usePointRoute";
 import { availabilityOf, indicativeNgnKwh, discoSupply } from "./siteScan";
-import { Section, Skeleton, Problem, AVAIL_CLS, SupplyBlock, DemandBlock, SolarBlock } from "./cardParts";
+import { Section, Skeleton, Problem, AVAIL_CLS, SupplyBlock, DemandBlock, SolarBlock, lossBreakdown, Term } from "./cardParts";
+import { MODEL_DATA_NOTE } from "@/data/provenance";
 
 const fmtKm = (km) => (km >= 100 ? Math.round(km).toLocaleString() : km.toFixed(1));
 const mwh = (kwh) => Math.round(kwh / 1000).toLocaleString();
 
+// How a first/last mile was measured: road distance when OSRM resolved it,
+// otherwise straight-line to the supply point. Neither is an existing line.
+const mileHow = (km, geometry) => (km > 0 ? (geometry ? "by road" : "straight line") : null);
+
 // First mile / grid / last mile as one proportional bar.
-function DistanceBar({ first, grid, last }) {
+function DistanceBar({ first, grid, last, firstHow, lastHow }) {
   const total = first + grid + last || 1;
   const seg = [
-    { km: first, color: END_COLORS.from, label: "First mile" },
-    { km: grid, color: "#f5a623", label: "Grid" },
-    { km: last, color: END_COLORS.to, label: "Last mile" },
+    { km: first, color: END_COLORS.from, label: "First mile", term: "first mile", how: firstHow },
+    { km: grid, color: "#f5a623", label: "Grid", term: "grid section", how: "along modelled lines" },
+    { km: last, color: END_COLORS.to, label: "Last mile", term: "last mile", how: lastHow },
   ];
   return (
     <div>
@@ -33,10 +38,36 @@ function DistanceBar({ first, grid, last }) {
         {seg.map(s => (
           <span key={s.label} className="flex items-center gap-1">
             <span className="h-1.5 w-1.5 rounded-full" style={{ background: s.color }} />
-            {s.label} <span className="font-mono text-foreground">{fmtKm(s.km)} km</span>
+            <Term term={s.term}>{s.label}</Term> <span className="font-mono text-foreground">{fmtKm(s.km)} km</span>
+            {s.how && s.km > 0 && <span className="text-muted-foreground/70">({s.how})</span>}
           </span>
         ))}
       </div>
+    </div>
+  );
+}
+
+// Where one end of the route joins the grid, and a choice of other nearby
+// substations (only for ends that are points, not named Onction parties).
+function JoinPicker({ end, label, node, join, onChange }) {
+  if (!join) return null;
+  return (
+    <div className="space-y-1" data-testid={`join-${end}`}>
+      <label className="flex flex-wrap items-center gap-1.5 text-[10.5px] text-muted-foreground">
+        <span className="h-2 w-2 rounded-full" style={{ background: END_COLORS[end] }} />
+        {label} joins the grid at
+        <select value={join.choice === "manual" ? node : ""} onChange={(e) => onChange(end, e.target.value || null)}
+                aria-label={`${label}: substation to join the grid at`}
+                className="h-6 max-w-[11rem] rounded border border-border bg-background/60 px-1 text-[11px] font-semibold text-foreground outline-none focus:border-primary/70">
+          <option value="">{join.choice === "auto" ? `${node} (nearest listed)` : "Nearest listed supply point"}</option>
+          {join.options.filter(o => !(join.choice === "auto" && o.name === node)).map(o => (
+            <option key={o.name} value={o.name}>{o.name} · {o.km} km{o.supply_point ? "" : " · unconfirmed"}</option>
+          ))}
+        </select>
+      </label>
+      {!join.confirmed && (
+        <Problem>{node} isn't confirmed as a supply point in Onction's data. The figures assume it could be used.</Problem>
+      )}
     </div>
   );
 }
@@ -55,10 +86,12 @@ export function routeSummaryText({ from, to, route, ends, feeder, mw }) {
   const lines = [`Onction route — ${from.name} → ${to.name}`];
   const path = r.hops?.length ? [r.hops[0].from_node, ...r.hops.map(h => h.to_node)] : [r.source_node];
   lines.push(`Grid path: ${path.join(" → ")}`);
-  lines.push(`Distance: ${r.total_km} km (first mile ${r.first_mile_km} km, grid ${r.routed_km} km, last mile ${r.last_mile_km} km)`);
-  lines.push(`Transmission loss: ${r.loss_pct}% (${r.loss_model?.label || "base"})`);
+  const first = mileHow(r.first_mile_km, r.first_mile_geometry), last = mileHow(r.last_mile_km, r.last_mile_geometry);
+  lines.push(`Distance: ${r.total_km} km (first mile ${r.first_mile_km} km${first ? `, ${first}` : ""}; grid ${r.routed_km} km; last mile ${r.last_mile_km} km${last ? `, ${last}` : ""})`);
+  lines.push(`Grid loss (screening estimate, grid section only): ${lossBreakdown(r) || `${r.loss_pct}%`}`);
   const cost = indicativeNgnKwh(r.tariff_ngn_kwh, r.loss_pct);
-  if (cost) lines.push(`Delivered energy cost: ~₦${cost.toFixed(1)}/kWh (GenCo tariff ₦${r.tariff_ngn_kwh} + losses; wheeling not included)`);
+  if (cost) lines.push(`Delivered energy cost: ~₦${cost.toFixed(1)}/kWh (GenCo tariff ₦${r.tariff_ngn_kwh} + grid losses; first/last-mile losses and wheeling not included)`);
+  lines.push(`Model data: ${MODEL_DATA_NOTE}`);
   if (r.projection) lines.push(`At ${mw} MW for a month: ${mwh(r.projection.contracted_kwh)} MWh sent, ${mwh(r.projection.delivered_kwh)} MWh delivered, ${mwh(r.projection.transmission_loss_kwh)} MWh lost`);
   for (const [tag, end] of [["A", ends.from], ["B", ends.to]]) {
     if (end?.supply?.status === "ready") discoSupply(end.supply.discoIds, feeder.data).forEach(d =>
@@ -67,7 +100,42 @@ export function routeSummaryText({ from, to, route, ends, feeder, mw }) {
   return lines.join("\n");
 }
 
-export default function RouteCard({ planner, index, feeder, onClose, onScan }) {
+// 3D view of the route: on/off, what's drawn, and what the towers mean.
+function View3D({ v }) {
+  if (!v) return null;
+  const chip = (k, label) => (
+    <button key={k} type="button" onClick={() => v.toggleLayer(k)} aria-pressed={v.view[k]} data-testid={`route3d-${k}`} disabled={!v.threeD}
+            className={`rounded-md border px-1.5 py-0.5 text-[10.5px] font-medium disabled:opacity-40 ${v.view[k] ? "border-primary/50 bg-primary/10 text-foreground" : "border-border text-muted-foreground line-through"}`}>
+      {label}
+    </button>
+  );
+  return (
+    <div className="space-y-1.5 rounded-md border border-border px-2.5 py-2" data-testid="route-3d">
+      <div className="flex flex-wrap items-center gap-1">
+        <button type="button" onClick={v.toggle3D} aria-pressed={v.threeD} data-testid="route3d-toggle"
+                className={`mr-1 rounded-md px-2 py-0.5 text-[10.5px] font-bold ${v.threeD ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"}`}>
+          3D {v.threeD ? "on" : "off"}
+        </button>
+        {chip("towers", "Towers")}{chip("substations", "Substations")}{chip("flow", "Energy flow")}
+        <span className="ml-auto flex items-center gap-0.5 text-[10px]">
+          <button type="button" onClick={() => v.allLayers(true)} disabled={!v.threeD} data-testid="route3d-all-on" className="rounded px-1 font-semibold text-foreground hover:bg-accent disabled:opacity-40">All on</button>
+          <span className="text-border">|</span>
+          <button type="button" onClick={() => v.allLayers(false)} disabled={!v.threeD} data-testid="route3d-all-off" className="rounded px-1 font-semibold text-foreground hover:bg-accent disabled:opacity-40">All off</button>
+        </span>
+        {v.status === "loading" && <span className="text-[10px] text-muted-foreground">Loading…</span>}
+      </div>
+      {v.status === "error" && <Problem>The 3D view couldn't load on this device. The route and its numbers are unaffected.</Problem>}
+      {v.threeD && (
+        <p className="text-[9.5px] leading-snug text-muted-foreground/80">
+          Towers are illustrations placed on the modelled path between substations, spaced for readability — not real tower positions.
+          Zoom in for more detail. The dashed first/last miles have no towers: they aren't existing lines.
+        </p>
+      )}
+    </div>
+  );
+}
+
+export default function RouteCard({ planner, index, feeder, onClose, onScan, view3d }) {
   const [copied, setCopied] = useState(false);
   const { from, to, mw, route, ends } = planner;
   const r = route.status === "ready" ? route.result : null;
@@ -152,17 +220,24 @@ export default function RouteCard({ planner, index, feeder, onClose, onScan }) {
         )}
 
         {from && to && (
-          <Section icon={Path} title="Grid route" source={r ? "live" : null}>
+          <Section icon={Path} title="Grid route" source={r ? "model" : null} how={r && {
+            what: "A path electricity could take between A and B over the transmission lines in Onction's network model, with its length and estimated loss.",
+            source: `Onction's network model of TCN substations and built lines. ${MODEL_DATA_NOTE}`,
+            how: `Each end joins the grid at a substation (the nearest listed supply point unless you chose another). Between them, the shortest path over built lines (Dijkstra's algorithm); each line between two substations is one hop. Total = first mile + grid section + last mile. Grid loss = ${lossBreakdown(r) || `${r.loss_pct}%`}.`,
+            limits: "A modelled path, not a confirmed physical route, capacity or supply contract. The model is simplified (±10% on distance). First/last miles aren't lines in the data. Losses are screening estimates and wheeling charges aren't included.",
+            next: "Use it to compare options. Before committing, confirm the path, capacity and charges with TCN and the DisCos involved.",
+          }}>
             {route.status === "loading" && <Skeleton lines={4} />}
             {route.status === "error" && <Problem>{route.message}</Problem>}
             {r && (
               <div className="space-y-3">
                 <div className="grid grid-cols-3 gap-2">
                   <Stat value={fmtKm(r.total_km)} unit="km" label="Total distance" />
-                  <Stat value={r.loss_pct} unit="%" label="Grid loss" />
+                  <Stat value={r.loss_pct} unit="%" label={<Term term="grid loss">Grid loss (est.)</Term>} />
                   <Stat value={r.hop_count} unit="" label={r.hop_count === 1 ? "Grid hop" : "Grid hops"} />
                 </div>
-                <DistanceBar first={r.first_mile_km || 0} grid={r.routed_km} last={r.last_mile_km || 0} />
+                <DistanceBar first={r.first_mile_km || 0} grid={r.routed_km} last={r.last_mile_km || 0}
+                             firstHow={mileHow(r.first_mile_km, r.first_mile_geometry)} lastHow={mileHow(r.last_mile_km, r.last_mile_geometry)} />
                 <div className="flex flex-wrap items-center gap-y-1 text-[10.5px]">
                   {path.map((n, i) => {
                     const outside = r.scope?.outside_nodes.find(o => o.node === n);
@@ -176,6 +251,12 @@ export default function RouteCard({ planner, index, feeder, onClose, onScan }) {
                     );
                   })}
                 </div>
+                {(r.source_join || r.dest_join) && (
+                  <div className="space-y-1.5">
+                    <JoinPicker end="from" label="A" node={r.source_node} join={r.source_join} onChange={planner.chooseNode} />
+                    <JoinPicker end="to" label="B" node={r.injection_node} join={r.dest_join} onChange={planner.chooseNode} />
+                  </div>
+                )}
                 {r.scope && (r.scope.stays_in_state ? (
                   <p className="text-[10.5px] text-emerald-500">Stays within {r.scope.state} the whole way.</p>
                 ) : (
@@ -191,8 +272,11 @@ export default function RouteCard({ planner, index, feeder, onClose, onScan }) {
                   </p>
                 ))}
                 {straightKm != null && straightKm > 1 && (
-                  <p className="text-[10px] text-muted-foreground">
-                    Straight line {fmtKm(straightKm)} km · the grid path is <span className="text-foreground">{(r.total_km / straightKm).toFixed(1)}×</span> longer.
+                  <p className="text-[10px] text-muted-foreground" data-testid="route-straight">
+                    Straight line A → B: {fmtKm(straightKm)} km. The full route is <span className="text-foreground">{(r.total_km / straightKm).toFixed(2)}×</span> that.
+                    {(r.first_mile_km || 0) + (r.last_mile_km || 0) > 0 && (
+                      <> Of the {fmtKm(r.total_km)} km, {fmtKm((r.first_mile_km || 0) + (r.last_mile_km || 0))} km is first/last mile to the nearest supply point, which is not an existing line.</>
+                    )}
                   </p>
                 )}
                 {r.projection && (
@@ -203,8 +287,10 @@ export default function RouteCard({ planner, index, feeder, onClose, onScan }) {
                     <span className="font-mono text-red-400">{mwh(r.projection.transmission_loss_kwh)}</span> MWh lost to the grid.
                   </div>
                 )}
-                <p className="text-[9.5px] leading-snug text-muted-foreground/80">
-                  Loss applies to the grid section ({r.loss_model?.label || "base loading"}). First/last-mile losses and TCN/DisCo wheeling charges are not modelled yet.
+                <View3D v={view3d} />
+                <p className="text-[9.5px] leading-snug text-muted-foreground/80" data-testid="route-loss-note">
+                  Grid loss is a screening estimate at {(r.loss_model?.label || "base loading").toLowerCase()}, not a NERC loss factor:{" "}
+                  {lossBreakdown(r) || `${r.loss_pct}%`}. It covers the grid section only. First/last-mile losses and TCN/DisCo wheeling charges are not included, so real losses and costs will be higher.
                 </p>
               </div>
             )}
@@ -213,7 +299,7 @@ export default function RouteCard({ planner, index, feeder, onClose, onScan }) {
 
         {/* A: where power comes from */}
         {from && (
-          <Section icon={Lightning} title={`A · ${from.name}`} source={isGenco ? "live" : null} delay={0.04}>
+          <Section icon={Lightning} title={`A · ${from.name}`} source={isGenco ? "model" : null} delay={0.04}>
             {isGenco ? (
               <div className="space-y-1">
                 <div className="flex items-center gap-1.5">
@@ -228,7 +314,7 @@ export default function RouteCard({ planner, index, feeder, onClose, onScan }) {
               </div>
             ) : r ? (
               <p className="text-[11.5px] text-muted-foreground">
-                Not an Onction GenCo — joins the grid at <span className="font-semibold text-foreground">{r.source_node}</span>, {r.first_mile_km} km away. No tariff on record.
+                Not an Onction GenCo — joins the grid at <span className="font-semibold text-foreground">{r.source_node}</span>{r.source_join?.choice === "manual" ? " (your choice)" : ""}, {r.first_mile_km} km away {r.first_mile_geometry ? "by road" : "in a straight line"}. No tariff on record, so no delivered cost is shown.
               </p>
             ) : route.status === "loading" ? <Skeleton lines={1} /> : null}
           </Section>

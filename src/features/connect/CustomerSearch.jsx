@@ -3,6 +3,8 @@ import maplibregl from "maplibre-gl";
 import { MagnifyingGlass, CircleNotch, MapPin, PushPinSimple, X, Buildings, Factory, Lightning, Plug, Power, PushPin } from "@phosphor-icons/react";
 import usePlaceSearch, { placeSubtitle } from "@/lib/usePlaceSearch";
 import { searchPlaces, KIND_LABEL } from "@/features/explore/places";
+import useMovablePanel from "@/hooks/useMovablePanel";
+import PanelGrip from "@/components/ui/PanelGrip";
 
 // The front door of the Connect workflow: "I have a customer at …".
 // Searches Onction's own records first (offtakers, C&I loads, GenCos,
@@ -60,6 +62,7 @@ export default function CustomerSearch({ index, onSelect, onDropPin, dropping, c
   const [active, setActive] = useState(0);
   const inputRef = useRef(null);
   const boxRef = useRef(null);
+  const panel = useMovablePanel("customer-search");
   const q = text.trim();
   const { results, status, stateHint, errors } = usePlaceSearch(q, open && q.length >= 3);
 
@@ -116,9 +119,10 @@ export default function CustomerSearch({ index, onSelect, onDropPin, dropping, c
   let lastGroup = null;
 
   return (
-    <div ref={boxRef} data-testid="customer-search"
-         className={`absolute left-3 right-3 top-3 z-[28] sm:right-auto ${compact ? "sm:w-[340px]" : "sm:w-[400px]"}`}>
+    <div ref={(el) => { boxRef.current = el; panel.ref.current = el; }} data-testid="customer-search" style={panel.style}
+         className={`absolute left-3 right-3 top-3 z-[28] sm:right-auto ${panel.moved ? "w-[calc(100%-1.5rem)]" : ""} ${compact ? "sm:w-[340px]" : "sm:w-[400px]"}`}>
       <div className={`flex items-center gap-2.5 rounded-xl border bg-card/95 px-3.5 shadow-xl backdrop-blur transition-colors ${open ? "border-primary/60" : "border-border"}`}>
+        <PanelGrip panel={panel} name="Customer search" className="-ml-1.5" />
         <MagnifyingGlass className="h-4 w-4 flex-shrink-0 text-primary" weight="bold" />
         <input
           ref={inputRef} value={text}

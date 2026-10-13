@@ -105,9 +105,11 @@ test("All off hides every Connect layer but not the map; All on restores; Reset 
   for (const id of ["connect-cands", "connect-cand-labels", "connect-line", "connect-line-label", "connect-radius", "connect-radius-label"]) expect(await vis(page, id)).toBe("none");
   expect(await rendered(page, "connect-lines")).toEqual([]);
   await expect(page.locator(".customer-pin")).toBeHidden();
-  // The basemap (geography) is untouched and still renders.
-  const base = await page.evaluate(() => ({ loaded: window.__gisMap.loaded(), layers: window.__gisMap.getStyle().layers.filter(l => !l.id.startsWith("connect-")).length }));
-  expect(base.loaded).toBe(true);
+  // The basemap (geography) is untouched and still renders. loaded() is
+  // briefly false while MapLibre redraws after a visibility change, so wait
+  // for it to settle rather than reading it at one instant.
+  await page.waitForFunction(() => window.__gisMap.loaded(), null, { timeout: 15_000 });
+  const base = await page.evaluate(() => ({ layers: window.__gisMap.getStyle().layers.filter(l => !l.id.startsWith("connect-")).length }));
   expect(base.layers).toBeGreaterThan(20);
   for (const b of await page.locator("[data-testid^=layer-]:not([data-testid=layer-focus])").all()) await expect(b).toHaveAttribute("aria-pressed", "false");
 

@@ -29,7 +29,7 @@ const PULSES = 14;
 const reducedMotion = () => window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
 
 let modelsPromise = null;
-function loadModels() {
+export function loadModels() {
   if (!modelsPromise) {
     const loader = new GLTFLoader();
     const load = (f) => loader.loadAsync(MODEL_BASE + f).then(g => {
@@ -47,7 +47,7 @@ function loadModels() {
 
 // Sub-meshes of a model with their transforms baked relative to the model
 // root (Y-up glTF → our Z-up), for building InstancedMeshes.
-function meshParts(root) {
+export function meshParts(root) {
   const up = new THREE.Matrix4().makeRotationX(Math.PI / 2);
   root.updateMatrixWorld(true);
   const parts = [];
@@ -56,7 +56,7 @@ function meshParts(root) {
 }
 
 const ghosts = new Map();
-function ghostMaterial(m, opacity) {
+export function ghostMaterial(m, opacity) {
   const key = `${m.uuid}:${opacity}`;
   if (!ghosts.has(key)) {
     const g = m.clone();
@@ -67,7 +67,7 @@ function ghostMaterial(m, opacity) {
 }
 
 // Instanced copies of a model: one InstancedMesh per sub-mesh.
-class Instanced {
+export class Instanced {
   constructor(parts, capacity, { opacity = 1 } = {}) {
     this.parts = parts;
     this.group = new THREE.Group();

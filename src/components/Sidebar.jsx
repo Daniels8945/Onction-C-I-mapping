@@ -11,7 +11,7 @@ import { CI_CUSTOMERS, GENCOS, TRADERS, DISCOS, TCN_LOOPS } from "../data";
 import { TX_LINE_STATUS, SUBSTATION_STATUS } from "../data/legend";
 
 export default function Sidebar({
-  layerVis, toggleLayer,
+  layerVis, toggleLayer, onAllLayers, onResetView,
   selectedFeature, analysisText,
   pins, onFlyToPin, onRemovePin, onClearPins,
   isCollapsed, onToggleCollapse,
@@ -71,6 +71,16 @@ export default function Sidebar({
               </div>
             )}
 
+            {/* All on / All off / Reset view — every layer listed below */}
+            <div className="mx-3 mt-3 flex items-center gap-1 rounded-md border border-border px-2 py-1.5 text-[10.5px]" role="group" aria-label="All map layers">
+              <span className="flex-1 whitespace-nowrap text-[9px] font-bold uppercase tracking-widest text-muted-foreground">Layers</span>
+              <button type="button" onClick={() => onAllLayers(true)} data-testid="sidebar-all-on" className="rounded px-1.5 py-0.5 font-semibold text-foreground hover:bg-accent">All on</button>
+              <span className="text-border">|</span>
+              <button type="button" onClick={() => onAllLayers(false)} data-testid="sidebar-all-off" className="rounded px-1.5 py-0.5 font-semibold text-foreground hover:bg-accent">All off</button>
+              <span className="text-border">|</span>
+              <button type="button" onClick={onResetView} data-testid="sidebar-reset" title="Default layers and the whole-country view" className="rounded px-1.5 py-0.5 font-semibold text-foreground hover:bg-accent">Reset view</button>
+            </div>
+
             {/* C&I Layer */}
             <SectionTitle hint="Commercial & Industrial customers — large factories, banks, mills etc. that buy power directly under their own contract instead of through the standard grid tariff.">
               C&amp;I Customers
@@ -99,8 +109,8 @@ export default function Sidebar({
 
             <Separator className="my-2" />
 
-            {/* Onction Grid Atlas — live network + PPA parties from the routing API */}
-            <SectionTitle hint="Onction's own live data: the actual TCN transmission network, plus Onction's specific GenCo/DisCo/Offtaker deals layered on top of it — sourced from real PPAs, not the generic market list above.">
+            {/* Onction Grid Atlas — network model + PPA parties from the routing API */}
+            <SectionTitle hint="Onction's own data: a simplified model of the TCN transmission network (not live grid readings), plus Onction's specific GenCo/DisCo/Offtaker deals layered on top of it — sourced from real PPAs, not the generic market list above.">
               Onction Grid Atlas
             </SectionTitle>
             <div className="mx-3 mb-2 rounded-md border border-border bg-muted/40 px-2.5 py-2 text-[10px] text-muted-foreground leading-relaxed">
@@ -141,11 +151,11 @@ export default function Sidebar({
             ))}
             <LayerRow
               colorDot="hsl(var(--data-genco))" label="GenCo Engagements" badge={gridParties.gencos.length} on={layerVis.gridGencos} onClick={() => toggleLayer("gridGencos")}
-              hint="Onction's live commercial deals with generators, sourced from executed and draft PPAs."
+              hint="Onction's active commercial deals with generators, sourced from executed and draft PPAs."
             />
             <LayerRow
               colorDot="hsl(var(--data-disco))" label="DisCo Engagements" badge={gridParties.discos.length} on={layerVis.gridDiscos} onClick={() => toggleLayer("gridDiscos")}
-              hint="Onction's live supply deals with distribution companies, same PPA-backed source."
+              hint="Onction's active supply deals with distribution companies, same PPA-backed source."
             />
             <LayerRow
               colorDot="hsl(var(--data-offtaker))" label="Offtakers" badge={gridParties.offtakers.length} on={layerVis.gridOfftakers} onClick={() => toggleLayer("gridOfftakers")}

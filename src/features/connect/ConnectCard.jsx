@@ -250,7 +250,7 @@ export default function ConnectCard({ connect, onClose, onSources, onRoute, onPi
 
         {/* 2 · Nearby infrastructure */}
         {customer && (
-          <Section icon={Plug} title="2 · Nearby infrastructure" source={a ? "live" : null} delay={0.03}>
+          <Section icon={Plug} title="2 · Nearby infrastructure" source={a ? "model" : null} delay={0.03}>
             <div className="mb-2 flex items-center gap-1" role="group" aria-label="Search radius">
               <span className="mr-1 text-[10.5px] text-muted-foreground">Within</span>
               {RADIUS_OPTIONS.map(r => (

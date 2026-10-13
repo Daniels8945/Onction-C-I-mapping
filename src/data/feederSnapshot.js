@@ -9,7 +9,11 @@
 
 export const FEEDER_SNAPSHOT = {
   capturedAt: "2026-09-28T17:49+01:00",
-  hoursElapsed: 17.8, // hours since midnight WAT at capture — the denominator for "availability today"
+  // Hours since midnight WAT at capture. Caution: the feed's "hours on today"
+  // was later found to reset around 08:00 WAT, not midnight (Oct 2026), so
+  // availability from this snapshot is likely understated. Live data measures
+  // the feed's day directly (server/src/feeders/routes.js HOURS_INTO_DAY).
+  hoursElapsed: 17.8,
   source: "Feeder-compliance API · 991 metered 11/33 kV feeders",
   // Keyed by the app's DisCo ids (DISCOS[].id) — the feed spells Kaduna "KAEDC".
   discos: {

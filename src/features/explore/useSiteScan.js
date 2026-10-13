@@ -47,13 +47,18 @@ function ensureLayers(map) {
   map.addLayer({ id: "scan-arcs", type: "line", source: "scan-arcs-src", filter: ["==", ["get", "kind"], "arc"],
     layout: { "line-cap": "round" },
     paint: { "line-color": ["get", "color"], "line-width": 2.5, "line-opacity": 0.95, "line-dasharray": [0, 4, 3] } });
-  map.addLayer({ id: "scan-pts", type: "circle", source: "scan-pts-src",
+  // Other grid-connected substations the user can connect at instead —
+  // hollow so they read as options, not as the chosen supply point.
+  map.addLayer({ id: "scan-alt", type: "circle", source: "scan-pts-src", filter: ["==", ["get", "kind"], "alt"],
+    paint: { "circle-radius": 6, "circle-color": "rgba(0,0,0,0.35)", "circle-stroke-color": "#ffffff", "circle-stroke-width": 1.5, "circle-stroke-opacity": 0.8 } });
+  map.addLayer({ id: "scan-pts", type: "circle", source: "scan-pts-src", filter: ["!=", ["get", "kind"], "alt"],
     paint: {
       "circle-radius": ["case", ["==", ["get", "kind"], "substation"], 7, 6],
       "circle-color": ["get", "color"], "circle-stroke-color": "#fff", "circle-stroke-width": 2,
     } });
   map.addLayer({ id: "scan-pt-labels", type: "symbol", source: "scan-pts-src",
-    layout: { "text-field": ["get", "label"], "text-font": ["Noto Sans Bold"], "text-size": 11, "text-offset": [0, 1.3], "text-anchor": "top" },
+    layout: { "text-field": ["get", "label"], "text-font": ["Noto Sans Bold"], "text-size": ["case", ["==", ["get", "kind"], "alt"], 10, 11],
+              "text-offset": [0, 1.3], "text-anchor": "top" },
     paint: { "text-color": ["get", "color"], "text-halo-color": "rgba(0,0,0,0.75)", "text-halo-width": 1.6 } });
 }
 
@@ -111,6 +116,10 @@ export default function useSiteScan({ mapRef, mapReady, locate, offtakers, getSu
         arcs.push({ type: "Feature", properties: { kind: "lastmile" }, geometry: { type: "LineString", coordinates: lastMile } });
         pts.push({ type: "Feature", properties: { kind: "substation", color: "#ffffff", label: src.injectionNode }, geometry: { type: "Point", coordinates: [sub.lon, sub.lat] } });
       }
+      (src.options || []).filter(o => o.name !== src.injectionNode).forEach(o => {
+        const c = locate?.(o.name, "substation");
+        if (c) pts.push({ type: "Feature", properties: { kind: "alt", name: o.name, color: "#cbd5e1", label: o.name }, geometry: { type: "Point", coordinates: [c.lon, c.lat] } });
+      });
     }
     map.getSource("scan-arcs-src").setData({ type: "FeatureCollection", features: arcs });
     map.getSource("scan-pts-src").setData({ type: "FeatureCollection", features: pts });
@@ -154,7 +163,9 @@ export default function useSiteScan({ mapRef, mapReady, locate, offtakers, getSu
     setScan(null);
   }, [mapRef]);
 
-  const scanAt = useCallback((lat, lng, label = null) => {
+  // supplyNode: connect at this substation instead of the nearest listed
+  // supply point. keepView: re-run in place (no re-centre or re-framing).
+  const scanAt = useCallback((lat, lng, label = null, { supplyNode = null, keepView = false } = {}) => {
     const map = mapRef.current;
     if (!map) return;
     abortRef.current?.abort();
@@ -163,19 +174,21 @@ export default function useSiteScan({ mapRef, mapReady, locate, offtakers, getSu
     abortRef.current = controller;
     setArmed(false);
 
-    pulseRef.current?.remove();
-    const el = document.createElement("div");
-    el.className = "scan-pulse";
-    el.innerHTML = "<span></span><span></span><span></span><i></i>";
-    pulseRef.current = new maplibregl.Marker({ element: el }).setLngLat([lng, lat]).addTo(map);
+    if (!keepView || !pulseRef.current) {
+      pulseRef.current?.remove();
+      const el = document.createElement("div");
+      el.className = "scan-pulse";
+      el.innerHTML = "<span></span><span></span><span></span><i></i>";
+      pulseRef.current = new maplibregl.Marker({ element: el }).setLngLat([lng, lat]).addTo(map);
+    }
 
-    map.easeTo({ center: [lng, lat], zoom: Math.max(map.getZoom(), 8), duration: 700 });
-    let framed = false;
+    if (!keepView) map.easeTo({ center: [lng, lat], zoom: Math.max(map.getZoom(), 8), duration: 700 });
+    let framed = keepView;
     runSiteScan({
-      lat, lng, offtakers: offtakersRef.current, substations: getSubstations?.(), signal: controller.signal,
+      lat, lng, offtakers: offtakersRef.current, substations: getSubstations?.(), signal: controller.signal, supplyNode,
       onUpdate: (partial) => {
         if (controller.signal.aborted) return;
-        const s = { ...partial, label };
+        const s = { ...partial, label, supplyNode };
         scanRef.current = s;
         setScan(s);
         draw(s);
@@ -183,6 +196,29 @@ export default function useSiteScan({ mapRef, mapReady, locate, offtakers, getSu
       },
     });
   }, [mapRef, draw, frame, getSubstations]);
+
+  // Connect the current site at a different substation (null = back to the
+  // nearest listed supply point). Re-runs the scan in place.
+  const chooseSupply = useCallback((node) => {
+    const s = scanRef.current;
+    if (s) scanAt(s.lat, s.lng, s.label, { supplyNode: node, keepView: true });
+  }, [scanAt]);
+  const chooseRef = useRef(chooseSupply);
+  chooseRef.current = chooseSupply;
+
+  // Clicking one of the drawn alternatives picks it. Delegated to the layer
+  // id, so it survives style swaps like the layers' own redraw.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!mapReady || !map) return;
+    const onClick = (e) => { const n = e.features?.[0]?.properties?.name; if (n) chooseRef.current(n); };
+    const enter = () => { map.getCanvas().style.cursor = "pointer"; };
+    const leave = () => { map.getCanvas().style.cursor = ""; };
+    map.on("click", "scan-alt", onClick);
+    map.on("mouseenter", "scan-alt", enter);
+    map.on("mouseleave", "scan-alt", leave);
+    return () => { map.off("click", "scan-alt", onClick); map.off("mouseenter", "scan-alt", enter); map.off("mouseleave", "scan-alt", leave); };
+  }, [mapReady, mapRef]);
 
   // Scan clicks are caught at the window in the capture phase, before
   // MapLibre sees them — so while armed, a click on a GenCo or substation
@@ -232,5 +268,5 @@ export default function useSiteScan({ mapRef, mapReady, locate, offtakers, getSu
 
   useEffect(() => () => { abortRef.current?.abort(); stopAnim(); }, []);
 
-  return { armed, arm: () => setArmed(true), disarm: () => setArmed(false), scan, scanAt, clear };
+  return { armed, arm: () => setArmed(true), disarm: () => setArmed(false), scan, scanAt, chooseSupply, clear };
 }

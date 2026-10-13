@@ -118,6 +118,22 @@ export function pathKm(hops) {
 export const isGridSupplyPoint = (graph, s) =>
   s.is_injection && s.status === "existing" && !!graph.adjacency.get(s.name)?.length;
 
+// Built substations reached by at least one existing line, whether or not
+// they're a listed supply point — the ones a user may choose to connect at.
+export const isGridConnected = (graph, s) =>
+  s.status === "existing" && !!graph.adjacency.get(s.name)?.length;
+
+// The nearest few grid-connected substations to a point, for "connect at a
+// different substation" choices. `supply_point` says which are listed.
+export function nearbyConnected(graph, lat, lon, limit = 6) {
+  return [...graph.nodes.values()]
+    .filter(s => isGridConnected(graph, s))
+    .map(s => ({ name: s.name, voltage_kv: s.voltage_kv, state: s.state || null, supply_point: isGridSupplyPoint(graph, s),
+                 km: Math.round(haversineKm(lat, lon, s.lat, s.lon) * 10) / 10 }))
+    .sort((a, b) => a.km - b.km)
+    .slice(0, limit);
+}
+
 // Where a point joins the grid. With scopeState, an in-state supply point is
 // preferred unless it's much farther than the nearest one overall; the
 // response says which was chosen and why (`scope`).

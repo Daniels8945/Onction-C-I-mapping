@@ -23,6 +23,10 @@ function ensureLayers(map) {
     layout: { "line-cap": "round", "line-join": "round" }, paint: { "line-color": LINE, "line-width": 3.5 } });
   map.addLayer({ id: "ptroute-miles", type: "line", source: "ptroute-lines-src", filter: ["==", ["get", "kind"], "mile"],
     layout: { "line-cap": "round" }, paint: { "line-color": ["get", "color"], "line-width": 2.5, "line-dasharray": [1, 1.6] } });
+  // First/last miles aren't lines in the data — say so on the map.
+  map.addLayer({ id: "ptroute-mile-labels", type: "symbol", source: "ptroute-lines-src", filter: ["==", ["get", "kind"], "mile"],
+    layout: { "symbol-placement": "line-center", "text-field": ["get", "label"], "text-font": ["Noto Sans Regular"], "text-size": 10, "text-offset": [0, -0.8] },
+    paint: { "text-color": ["get", "color"], "text-halo-color": "rgba(0,0,0,0.75)", "text-halo-width": 1.5 } });
   map.addLayer({ id: "ptroute-hops", type: "circle", source: "ptroute-pts-src",
     paint: { "circle-radius": 4.5, "circle-color": "#0b1220", "circle-stroke-color": LINE, "circle-stroke-width": 2 } });
   map.addLayer({ id: "ptroute-hop-labels", type: "symbol", source: "ptroute-pts-src",
@@ -49,6 +53,11 @@ export default function usePointRoute({ mapRef, mapReady, getSubstations, offtak
   const [keepInState, setKeepInState] = useState(true);
   const [endStates, setEndStates] = useState({ from: undefined, to: undefined }); // undefined = not looked up yet, null = no state
   const [ends, setEnds] = useState({ from: null, to: null });  // runSiteScan results (without GenCo ranking)
+  // Substations the user chose for each end to join the grid at (null = the
+  // nearest listed supply point). Reset whenever that end changes.
+  const [nodes, setNodes] = useState({ from: null, to: null });
+  useEffect(() => { setNodes(n => (n.from ? { ...n, from: null } : n)); }, [from]);
+  useEffect(() => { setNodes(n => (n.to ? { ...n, to: null } : n)); }, [to]);
   const routeRef = useRef(null);
   const markersRef = useRef([]);
   const abortRef = useRef(null);
@@ -81,9 +90,10 @@ export default function usePointRoute({ mapRef, mapReady, getSubstations, offtak
     if (trunk.length >= 2) lines.push({ type: "Feature", properties: { kind: "trunk" }, geometry: { type: "LineString", coordinates: trunk } });
     nodes.forEach(n => { const c = nodeCoords(n); if (c) pts.push({ type: "Feature", properties: { name: n }, geometry: { type: "Point", coordinates: c } }); });
     const start = nodeCoords(r.source_node), end = nodeCoords(r.injection_node);
-    if (start && r.first_mile_km > 0) lines.push({ type: "Feature", properties: { kind: "mile", color: END_COLORS.from },
+    const mileLabel = (geom) => (geom ? "by road · no line here yet" : "straight line · no line here yet");
+    if (start && r.first_mile_km > 0) lines.push({ type: "Feature", properties: { kind: "mile", color: END_COLORS.from, label: mileLabel(r.first_mile_geometry) },
       geometry: { type: "LineString", coordinates: r.first_mile_geometry || [A, start] } });
-    if (end && r.last_mile_km > 0) lines.push({ type: "Feature", properties: { kind: "mile", color: END_COLORS.to },
+    if (end && r.last_mile_km > 0) lines.push({ type: "Feature", properties: { kind: "mile", color: END_COLORS.to, label: mileLabel(r.last_mile_geometry) },
       geometry: { type: "LineString", coordinates: r.last_mile_geometry || [end, B] } });
     map.getSource("ptroute-lines-src").setData({ type: "FeatureCollection", features: lines });
     map.getSource("ptroute-pts-src").setData({ type: "FeatureCollection", features: pts });
@@ -136,7 +146,7 @@ export default function usePointRoute({ mapRef, mapReady, getSubstations, offtak
     const mwNum = Number(mw) > 0 ? Number(mw) : undefined;
 
     setRoute({ status: "loading" });
-    gridApi.route({ ...routeParams(from, to), mw: mwNum, scopeState: scopeState || undefined })
+    gridApi.route({ ...routeParams(from, to), mw: mwNum, scopeState: scopeState || undefined, fromNode: nodes.from, toNode: nodes.to })
       .then(r => {
         if (signal.aborted) return;
         if (r.error) { setRoute({ status: "error", message: r.error }); clearMap(); return; }
@@ -151,7 +161,7 @@ export default function usePointRoute({ mapRef, mapReady, getSubstations, offtak
       });
 
     return () => controller.abort();
-  }, [open, from, to, mw, scopeState, statesKnown, draw, clearMap]);
+  }, [open, from, to, mw, scopeState, statesKnown, nodes, draw, clearMap]);
 
   // Site stats for each end — only refetched when that end changes.
   useEffect(() => {
@@ -194,5 +204,7 @@ export default function usePointRoute({ mapRef, mapReady, getSubstations, offtak
   }, [clearMap]);
   const swap = useCallback(() => { setFrom(to); setTo(from); }, [from, to]);
 
-  return { open, from, to, mw, route, ends, setFrom, setTo, setMw, swap, start, close, keepInState, setKeepInState, sameState, endStates };
+  const chooseNode = useCallback((end, node) => setNodes(n => ({ ...n, [end]: node || null })), []);
+
+  return { open, from, to, mw, route, ends, setFrom, setTo, setMw, swap, start, close, keepInState, setKeepInState, sameState, endStates, nodes, chooseNode };
 }

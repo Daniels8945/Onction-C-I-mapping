@@ -41,7 +41,7 @@ export default function HelpDialog() {
           <DialogTitle>What am I looking at?</DialogTitle>
           <DialogDescription>
             A map of Nigeria's electricity market — who generates power, who delivers it, who buys it directly,
-            and (in the Onction Grid Atlas section) the live transmission network connecting them.
+            and (in the Onction Grid Atlas section) the modelled transmission network connecting them.
           </DialogDescription>
         </DialogHeader>
         <ScrollArea className="flex-1">
@@ -79,11 +79,11 @@ export default function HelpDialog() {
                 travels along.
               </Entry>
               <Entry color="hsl(158 84% 45%)" title="GenCo Engagements">
-                Onction's own live commercial deals with generators, sourced from executed and draft PPAs
+                Onction's own active commercial deals with generators, sourced from executed and draft PPAs
                 (Power Purchase Agreements) — not the generic market list above.
               </Entry>
               <Entry color="hsl(199 89% 65%)" title="DisCo Engagements">
-                Onction's live supply deals with distribution companies, same PPA-backed source.
+                Onction's active supply deals with distribution companies, same PPA-backed source.
               </Entry>
               <Entry color="hsl(330 81% 74%)" title="Offtakers">
                 Onction's contracted end customers — the eligible commercial/industrial buyers actually taking

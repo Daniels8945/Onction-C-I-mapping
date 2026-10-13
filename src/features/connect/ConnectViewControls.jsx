@@ -1,4 +1,6 @@
 import { useState } from "react";
+import useMovablePanel from "@/hooks/useMovablePanel";
+import PanelGrip from "@/components/ui/PanelGrip";
 import { Eye, EyeSlash, Pause, Play, ArrowCounterClockwise, Target, X, StackSimple, CaretDown } from "@phosphor-icons/react";
 
 // "What do I want to see?" — the Connect view's layer and animation
@@ -41,16 +43,18 @@ const IconBtn = ({ label, onClick, disabled, children, testid }) => (
 export default function ConnectViewControls({ connect }) {
   const { view, selected } = connect;
   const [open, setOpen] = useState(() => !window.matchMedia("(max-width: 639px)").matches);
+  const panel = useMovablePanel("map-layers");
   const allOn = [...INFRA, ...VISUAL].every(c => view[c.key]);
   const allOff = [...INFRA, ...VISUAL].every(c => !view[c.key]);
   const flowLive = view.flow && view.connection && !!selected;
 
   return (
-    <div data-testid="view-controls"
+    <div data-testid="view-controls" ref={panel.ref}
          className="absolute right-3 top-[64px] z-[27] w-[min(340px,calc(100%-1.5rem))] rounded-xl border border-border shadow-2xl backdrop-blur-md
                     sm:top-auto sm:bottom-10 sm:right-auto sm:left-[424px] sm:w-auto sm:max-w-[calc(100%-440px)]"
-         style={{ background: "color-mix(in srgb, hsl(var(--card)) 95%, transparent)" }}>
+         style={{ background: "color-mix(in srgb, hsl(var(--card)) 95%, transparent)", ...panel.style }}>
       <div className="flex items-center gap-2 px-3 py-2">
+        <PanelGrip panel={panel} name="Map layers" />
         <button onClick={() => setOpen(o => !o)} aria-expanded={open} className="flex items-center gap-1.5 text-[9.5px] font-bold uppercase tracking-widest text-muted-foreground hover:text-foreground">
           <StackSimple className="h-3.5 w-3.5 text-primary" /> Map layers <CaretDown className={`h-3 w-3 transition-transform ${open ? "" : "-rotate-90"}`} />
         </button>

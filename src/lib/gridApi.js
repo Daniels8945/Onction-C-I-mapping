@@ -16,6 +16,8 @@ export const gridApi = {
   lossModels:  () => get("/api/loss-models"),
   atccScenarios: () => get("/api/atcc-scenarios"),
   feederSummary: () => get("/api/feeders/summary"),
+  feeders: (opts) => get("/api/feeders", opts),
+  feeder: (id, opts) => get(`/api/feeders/${encodeURIComponent(id)}`, opts),
   // Connect workflow
   geocodeSearch: (q, opts) => get(`/api/geocode/search?${new URLSearchParams({ q })}`, opts),
   geocodeReverse: (lat, lng, opts) => get(`/api/geocode/reverse?${new URLSearchParams({ lat, lng })}`, opts),
@@ -25,7 +27,7 @@ export const gridApi = {
   connectLine: (lat, lng, substation, opts) => get(`/api/connect/line?${new URLSearchParams({ lat, lng, substation })}`, opts),
   // From a GenCo (genco) or any point (fromLat/fromLng); to a named
   // offtaker/DisCo (dest) or any point (lat/lng).
-  route: ({ genco, fromLat, fromLng, dest, lat, lng, lossModel, scenario, mw, scopeState }) => {
+  route: ({ genco, fromLat, fromLng, dest, lat, lng, lossModel, scenario, mw, scopeState, fromNode, toNode }) => {
     const p = new URLSearchParams();
     if (genco) p.set("genco", genco);
     if (fromLat != null) p.set("fromLat", fromLat);
@@ -37,9 +39,11 @@ export const gridApi = {
     if (scenario) p.set("scenario", scenario);
     if (mw != null) p.set("mw", mw);
     if (scopeState) p.set("scopeState", scopeState);
+    if (fromNode) p.set("fromNode", fromNode);   // join the grid at this substation instead of the nearest supply point
+    if (toNode) p.set("toNode", toNode);
     return get(`/api/route?${p}`);
   },
-  bestSource: ({ dest, lat, lng, lossModel, scenario, mw }) => {
+  bestSource: ({ dest, lat, lng, lossModel, scenario, mw, toNode, preferState }, opts) => {
     const p = new URLSearchParams();
     if (dest) p.set("dest", dest);
     if (lat != null) p.set("lat", lat);
@@ -47,6 +51,8 @@ export const gridApi = {
     if (lossModel) p.set("lossModel", lossModel);
     if (scenario) p.set("scenario", scenario);
     if (mw != null) p.set("mw", mw);
-    return get(`/api/best-source?${p}`);
+    if (toNode) p.set("toNode", toNode);
+    if (preferState) p.set("preferState", "1");
+    return get(`/api/best-source?${p}`, opts);
   },
 };

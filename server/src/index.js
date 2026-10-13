@@ -5,12 +5,14 @@ import { pool } from "./db.js";
 import {
   loadGraph, shortestPaths, buildPath, nodeSequenceToHops, pathKm,
   nearestInjectionSubstation, lossPct, energyProjection,
+  isGridConnected, isGridSupplyPoint, nearbyConnected, haversineKm,
 } from "./grid.js";
 import { locate, inNigeria, normaliseStateName } from "./geo/admin.js";
 import { searchPlaces, reversePlace, geocoderSources } from "./geo/geocode.js";
 import { assessConnection, connectionLine, DEFAULT_RADIUS_KM, MAX_RADIUS_KM } from "./connect.js";
 import { roadRoute } from "./osrm.js";
 import { feederRouter } from "./feeders/routes.js";
+import { startStationLocator } from "./feeders/locate.js";
 
 const app = express();
 // Behind the web container's / front Nginx: take the client IP from
@@ -118,7 +120,7 @@ app.get("/api/routes", async (_req, res, next) => {
 });
 
 // ── Dynamic routing: works for any destination, not just the 182 precomputed pairs ──
-async function resolveDestination({ dest, lat, lng, graph, scopeState = null }) {
+async function resolveDestination({ dest, lat, lng, graph, scopeState = null, node = null }) {
   if (dest) {
     const [off] = await q("SELECT name, injection_node, last_mile_km::float AS last_mile_km, capacity_mw::float AS capacity_mw FROM offtaker WHERE name = $1", [dest]);
     if (off) return { label: off.name, kind: "offtaker", injectionNode: off.injection_node, lastMileKm: off.last_mile_km, destMw: off.capacity_mw };
@@ -127,20 +129,43 @@ async function resolveDestination({ dest, lat, lng, graph, scopeState = null }) 
     return null;
   }
   if (lat != null && lng != null) {
-    // Straight-line pick for WHICH substation is nearest (cheap, and fine even
-    // for this — grid injection points are sparse enough that road-distance
-    // rarely changes which one is closest). Only the last-mile KM/geometry for
-    // that already-chosen substation gets upgraded to real road distance below.
-    const nearest = nearestInjectionSubstation(graph, Number(lat), Number(lng), { scopeState });
-    if (!nearest) return null;
-    const subNode = graph.nodes.get(nearest.node);
-    let lastMileKm = nearest.lastMileKm; // haversine fallback if OSRM is unreachable
-    let lastMileGeometry = null;
-    const road = subNode ? await roadRoute([subNode.lon, subNode.lat], [Number(lng), Number(lat)]) : null;
-    if (road) { lastMileKm = Math.round(road.distanceKm * 10) / 10; lastMileGeometry = road.geometry; }
-    return { label: `(${lat}, ${lng})`, kind: "point", injectionNode: nearest.node, lastMileKm, lastMileGeometry, destMw: null, snap: snapInfo(nearest) };
+    const join = await joinGrid(graph, Number(lat), Number(lng), { node, scopeState, toPoint: true });
+    if (join.error) return join;
+    return { label: `(${lat}, ${lng})`, kind: "point", injectionNode: join.node, lastMileKm: join.km, lastMileGeometry: join.geometry, destMw: null,
+             snap: join.snap, choice: join.choice, confirmed: join.confirmed, options: join.options };
   }
   return null;
+}
+
+// Where a point (not a named party) meets the grid: the nearest listed
+// supply point by default, or a substation the user chose (any built,
+// grid-connected one — `confirmed` says whether it's a listed supply point).
+// Which substation is picked by straight-line distance (cheap, and supply
+// points are sparse enough that road distance rarely changes the pick); the
+// mile to it is upgraded to road distance when OSRM is running.
+async function joinGrid(graph, lat, lng, { node = null, scopeState = null, toPoint }) {
+  const options = nearbyConnected(graph, lat, lng);
+  let pick, choice, snap = null;
+  if (node) {
+    const s = graph.nodes.get(node);
+    if (!s) throw new BadRequest(`Unknown substation: ${node}`);
+    if (!isGridConnected(graph, s)) throw new BadRequest(`${node} isn't a built substation on the grid, so nothing can be routed through it`);
+    pick = { node: s.name, lastMileKm: Math.round(haversineKm(lat, lng, s.lat, s.lon) * 10) / 10 };
+    choice = "manual";
+  } else {
+    pick = nearestInjectionSubstation(graph, lat, lng, { scopeState });
+    if (!pick) return { error: "No built supply point found for this location" };
+    choice = "auto";
+    snap = snapInfo(pick);
+  }
+  const sub = graph.nodes.get(pick.node);
+  if (!options.some(o => o.name === sub.name)) {
+    options.push({ name: sub.name, voltage_kv: sub.voltage_kv, state: sub.state || null, supply_point: isGridSupplyPoint(graph, sub), km: pick.lastMileKm });
+  }
+  let km = pick.lastMileKm, geometry = null; // straight line unless OSRM answers
+  const road = await roadRoute(toPoint ? [sub.lon, sub.lat] : [lng, lat], toPoint ? [lng, lat] : [sub.lon, sub.lat]);
+  if (road) { km = Math.round(road.distanceKm * 10) / 10; geometry = road.geometry; }
+  return { node: sub.name, km, geometry, snap, choice, confirmed: isGridSupplyPoint(graph, sub), options };
 }
 
 // Where the power enters the grid: a GenCo's own connection node, or — for
@@ -152,7 +177,7 @@ function snapInfo(nearest) {
   return { choice: nearest.scopeChoice, nearest_overall: nearest.nearestOverall || null, nearest_in_state: nearest.nearestInState || null };
 }
 
-async function resolveSource({ gencoName, fromLat, fromLng, graph, scopeState = null }) {
+async function resolveSource({ gencoName, fromLat, fromLng, graph, scopeState = null, node = null }) {
   if (gencoName) {
     const [genco] = await q(
       "SELECT name, connection_node, commitment, tariff_ngn_kwh::float AS tariff_ngn_kwh, capacity_note FROM genco WHERE name = $1",
@@ -162,15 +187,12 @@ async function resolveSource({ gencoName, fromLat, fromLng, graph, scopeState = 
     return { ...genco, kind: "genco", firstMileKm: 0, firstMileGeometry: null };
   }
   if (fromLat != null && fromLng != null) {
-    const nearest = nearestInjectionSubstation(graph, Number(fromLat), Number(fromLng), { scopeState });
-    if (!nearest) return { error: "No built substation near the starting point" };
-    const subNode = graph.nodes.get(nearest.node);
-    let firstMileKm = nearest.lastMileKm, firstMileGeometry = null;
-    const road = subNode ? await roadRoute([Number(fromLng), Number(fromLat)], [subNode.lon, subNode.lat]) : null;
-    if (road) { firstMileKm = Math.round(road.distanceKm * 10) / 10; firstMileGeometry = road.geometry; }
+    const join = await joinGrid(graph, Number(fromLat), Number(fromLng), { node, scopeState, toPoint: false });
+    if (join.error) return join;
     return {
-      name: `(${fromLat}, ${fromLng})`, kind: "point", connection_node: nearest.node,
-      commitment: null, tariff_ngn_kwh: null, capacity_note: null, firstMileKm, firstMileGeometry, snap: snapInfo(nearest),
+      name: `(${fromLat}, ${fromLng})`, kind: "point", connection_node: join.node,
+      commitment: null, tariff_ngn_kwh: null, capacity_note: null, firstMileKm: join.km, firstMileGeometry: join.geometry, snap: join.snap,
+      choice: join.choice, confirmed: join.confirmed, options: join.options,
     };
   }
   return { error: "Provide genco=<name> or fromLat & fromLng" };
@@ -249,6 +271,11 @@ async function computeRouteFor({ gencoName, source, destination, lossModelCode, 
     routed_km: Math.round(routedKm * 10) / 10,
     last_mile_km: lastMileKm,
     last_mile_geometry: dest.lastMileGeometry || null, // [lon,lat] road path, only set when OSRM resolved it
+    // How each point end meets the grid: auto (nearest listed supply point)
+    // or manual (the user's choice); confirmed = a listed supply point;
+    // options = nearby grid-connected substations to choose from instead.
+    source_join: genco.choice ? { choice: genco.choice, confirmed: genco.confirmed, options: genco.options } : null,
+    dest_join: dest.choice ? { choice: dest.choice, confirmed: dest.confirmed, options: dest.options } : null,
     total_km: Math.round(totalKm * 10) / 10,
     hop_count: hops.length,
     hops,
@@ -264,6 +291,7 @@ async function computeRouteFor({ gencoName, source, destination, lossModelCode, 
 // GET /api/route?genco=NDPHC%20Geregu&dest=GeePee&lossModel=base&scenario=dedicated
 // GET /api/route?genco=NDPHC%20Geregu&lat=6.68&lng=3.235&mw=6&lossModel=base
 // GET /api/route?fromLat=6.45&fromLng=3.39&dest=KEDCO   (from any point: nearest built substation + first mile)
+//   &fromNode=Ajaokuta / &toNode=…   join the grid at that substation instead of the nearest supply point
 app.get("/api/route", async (req, res, next) => {
   try {
     const { genco, dest, lossModel, scenario } = req.query;
@@ -273,10 +301,13 @@ app.get("/api/route", async (req, res, next) => {
     const scopeState = parseScope(req.query.scopeState);
     if (!genco && !from) return res.status(400).json({ error: "Provide genco=<name> or fromLat & fromLng" });
     const graph = await loadGraph();
-    const source = await resolveSource({ gencoName: genco, fromLat: from?.lat, fromLng: from?.lng, graph, scopeState });
+    const fromNode = req.query.fromNode ? String(req.query.fromNode) : null;
+    const toNode = req.query.toNode ? String(req.query.toNode) : null;
+    const source = await resolveSource({ gencoName: genco, fromLat: from?.lat, fromLng: from?.lng, graph, scopeState, node: fromNode });
     if (source.error) return res.status(404).json(source);
-    const destination = await resolveDestination({ dest, lat: to?.lat, lng: to?.lng, graph, scopeState });
+    const destination = await resolveDestination({ dest, lat: to?.lat, lng: to?.lng, graph, scopeState, node: toNode });
     if (!destination) return res.status(400).json({ error: "Provide dest=<offtaker/disco name> or lat & lng" });
+    if (destination.error) return res.status(404).json(destination);
     const result = await computeRouteFor({
       source, destination, lossModelCode: lossModel, atccCode: scenario, destMwOverride: mw, graph, scopeState,
     });
@@ -285,7 +316,7 @@ app.get("/api/route", async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
-// GET /api/best-source?dest=GeePee   OR   ?lat=&lng=&mw=
+// GET /api/best-source?dest=GeePee   OR   ?lat=&lng=&mw=[&toNode=<substation>][&preferState=1]
 // Ranks every GenCo by total routed distance to the destination — the dynamic
 // equivalent of v_best_source, but works for any point, not just known offtakers.
 app.get("/api/best-source", rateLimit({ perMinute: 60 }), async (req, res, next) => {
@@ -297,8 +328,13 @@ app.get("/api/best-source", rateLimit({ perMinute: 60 }), async (req, res, next)
       return res.status(400).json({ error: "Provide dest=<offtaker/disco name> or lat & lng" });
     }
     const graph = await loadGraph();
-    const destination = await resolveDestination({ dest, lat: to?.lat, lng: to?.lng, graph });
+    const toNode = req.query.toNode ? String(req.query.toNode) : null;
+    // preferState=1: prefer a supply point in the site's own state, the same
+    // rule the Connect assessment uses, so both show the same supply point.
+    const scopeState = req.query.preferState === "1" && to ? locate(to.lat, to.lng).state || null : null;
+    const destination = await resolveDestination({ dest, lat: to?.lat, lng: to?.lng, graph, node: toNode, scopeState });
     if (!destination) return res.status(404).json({ error: "Destination not found" });
+    if (destination.error) return res.status(404).json(destination);
 
     const gencos = await q("SELECT name FROM genco ORDER BY name");
     const results = [];
@@ -309,7 +345,10 @@ app.get("/api/best-source", rateLimit({ perMinute: 60 }), async (req, res, next)
       if (!r.error) results.push(r);
     }
     results.sort((a, b) => a.total_km - b.total_km);
-    res.json({ destination: destination.label, results });
+    res.json({
+      destination: destination.label, results,
+      dest_join: destination.choice ? { choice: destination.choice, confirmed: destination.confirmed, options: destination.options, node: destination.injectionNode, snap: destination.snap || null, state: scopeState } : null,
+    });
   } catch (e) { next(e); }
 });
 
@@ -381,3 +420,5 @@ app.use((err, _req, res, _next) => {
 
 const port = process.env.PORT || 4000;
 app.listen(port, () => console.log(`onction-grid-api listening on :${port}`));
+// Places feeders at their stations in the background, a batch a minute (feeders/locate.js).
+if (process.env.FEEDER_LOCATOR !== "off") startStationLocator(loadGraph);

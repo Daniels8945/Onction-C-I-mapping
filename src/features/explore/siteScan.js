@@ -1,7 +1,7 @@
 // Site Intelligence Scanner — everything the Explore scan knows about a point,
 // gathered from several sources of very different certainty. Each section of
 // the result carries a `source` so the card can badge it honestly:
-//   live      — computed now by the Onction grid API
+//   model     — computed now by the Onction grid API, from its fixed dataset
 //   live/delayed/snapshot for DisCo supply — see features/feeders/useFeederLive.js
 //   onction   — Onction's own deal data
 //   estimate  — a rule of thumb, not a measurement
@@ -129,7 +129,9 @@ export function discoSupply(ids, feederData) {
 // Runs every lookup for a point in parallel, reporting each section as it
 // lands via onUpdate(partial) so the card fills in progressively.
 // withSources=false skips the GenCo ranking (a route's end-points don't need it).
-export async function runSiteScan({ lat, lng, offtakers, substations, signal, onUpdate, withSources = true }) {
+// supplyNode: join the grid at this substation instead of the nearest listed
+// supply point (the user's choice).
+export async function runSiteScan({ lat, lng, offtakers, substations, signal, onUpdate, withSources = true, supplyNode = null }) {
   const result = {
     lat, lng,
     solar: { source: "estimate", kwhPerKwp: solarYieldEstimate(lat) },
@@ -155,21 +157,25 @@ export async function runSiteScan({ lat, lng, offtakers, substations, signal, on
     })
     .finally(() => { if (!signal?.aborted) onUpdate({ ...result }); });
 
-  const sources = !withSources ? Promise.resolve() : gridApi.bestSource({ lat, lng })
-    .then(({ results }) => {
+  const sources = !withSources ? Promise.resolve() : gridApi.bestSource({ lat, lng, toNode: supplyNode, preferState: true }, { signal })
+    .then(({ results, dest_join: join }) => {
       const ranked = rankSources(results);
       const best = ranked[0];
       result.sources = {
-        status: ranked.length ? "ready" : "empty", source: "live",
+        status: ranked.length ? "ready" : "empty", source: "model",
         ranked, top: ranked.slice(0, 3), total: ranked.length,
         injectionNode: best?.injection_node, lastMileKm: best?.last_mile_km,
         lastMileRoad: !!best?.last_mile_geometry, lastMileGeometry: best?.last_mile_geometry || null,
         nearestBuilt: nearestBuiltSubstation(lat, lng, substations),
+        // auto = nearest listed supply point; manual = the user's choice.
+        // confirmed = a listed supply point; options = nearby alternatives.
+        choice: join?.choice || "auto", confirmed: join ? join.confirmed : true, options: join?.options || [],
+        snap: join?.snap || null, state: join?.state || null,
       };
     })
     .catch(err => {
       if (signal?.aborted) return;
-      result.sources = { status: "error", message: `Grid API unreachable (${err.message})` };
+      result.sources = { status: "error", message: `Couldn't get grid sources: ${err.message}. Nothing below is estimated in its place.` };
     })
     .finally(() => { if (!signal?.aborted) onUpdate({ ...result }); });
 
@@ -185,11 +191,13 @@ export function scanSummaryText(scan, feeder) {
   lines.push(`Onction site scan — ${where} (${scan.lat.toFixed(4)}°N, ${scan.lng.toFixed(4)}°E)`);
   const s = scan.sources;
   if (s?.status === "ready") {
-    lines.push(`Grid connection: ${s.injectionNode}, last mile ${s.lastMileKm} km${s.lastMileRoad ? " by road" : " straight-line"}`);
+    lines.push(`Grid connection: ${s.injectionNode}${s.choice === "manual" ? " (chosen by user)" : " (nearest listed supply point)"}, last mile ${s.lastMileKm} km${s.lastMileRoad ? " by road" : " straight-line"}`);
+    if (!s.confirmed) lines.push(`  Note: ${s.injectionNode} is not confirmed as a C&I supply point in Onction's data; figures assume it could supply this site.`);
     lines.push("Best grid sources:");
     s.top.forEach((r, i) => lines.push(
-      `  ${i + 1}. ${r.genco} — ${r.availability.label}, ${r.total_km} km, ${r.loss_pct}% loss` +
-      (r.indicativeNgnKwh ? `, ~₦${r.indicativeNgnKwh.toFixed(1)}/kWh energy + losses` : "")));
+      `  ${i + 1}. ${r.genco} — ${r.availability.label}, ${r.total_km} km route, ${r.loss_pct}% grid loss (estimate)` +
+      (r.indicativeNgnKwh ? `, ~₦${r.indicativeNgnKwh.toFixed(1)}/kWh energy + grid losses` : "")));
+    lines.push("  (Grid losses are screening estimates; last-mile losses and wheeling charges are not included.)");
   }
   if (scan.supply?.status === "ready" && feeder) {
     const when = `${feeder.mode === "snapshot" ? "snapshot" : "live"} ${new Date(feeder.data.capturedAt).toISOString().slice(0, 16).replace("T", " ")} UTC`;

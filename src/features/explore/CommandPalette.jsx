@@ -18,7 +18,7 @@ const KIND_ICON = {
   disco: Buildings, ci: Factory, pin: PushPin, address: MapPin,
 };
 
-export default function CommandPalette({ open, onOpenChange, gridParties, substations, pins, onArm, onScan, onRoute }) {
+export default function CommandPalette({ open, onOpenChange, gridParties, substations, pins, onArm, onScan, onRoute, onSubstation, onFeeders }) {
   const [query, setQuery] = useState("");
   const [active, setActive] = useState(0);
   const listRef = useRef(null);
@@ -32,10 +32,11 @@ export default function CommandPalette({ open, onOpenChange, gridParties, substa
   const items = useMemo(() => {
     const armItem = { kind: "action", id: "arm", name: "Scan a site on the map", sub: "Click anywhere to scan it · Esc cancels" };
     const planItem = { kind: "route", id: "plan", name: "Route between two places", sub: "Pick a From and a To — or type “Dadin Kowa to Kano DisCo”" };
+    const feederItem = { kind: "action", id: "feeders", name: "Browse feeders", sub: "Every metered DisCo feeder: status, load, availability, on the map" };
     if (!q) {
       // Suggest what a C&I team can actually sell: available GenCos first.
       const gencos = index.filter(i => i.kind === "genco").sort((a, b) => (a.avail !== "available") - (b.avail !== "available")).slice(0, 4);
-      return [armItem, planItem, ...pins.slice(-3).map(p => index.find(i => i.kind === "pin" && i.name === p.label)).filter(Boolean), ...gencos];
+      return [armItem, planItem, ...(onFeeders ? [feederItem] : []), ...pins.slice(-3).map(p => index.find(i => i.kind === "pin" && i.name === p.label)).filter(Boolean), ...gencos];
     }
     // "A to B": offer the route between the best match for each side.
     const pair = parseRouteQuery(query);
@@ -51,10 +52,11 @@ export default function CommandPalette({ open, onOpenChange, gridParties, substa
     return [
       ...(routeItem ? [routeItem] : []),
       ...("scan a site".includes(q) ? [armItem] : []),
+      ...(onFeeders && ("browse feeders".includes(q) || q.startsWith("feeder")) ? [feederItem] : []),
       ...(!routeItem && ("route between".includes(q) || q.startsWith("route")) ? [planItem] : []),
       ...local, ...addresses,
     ];
-  }, [q, query, index, pins, addressResults]);
+  }, [q, query, index, pins, addressResults, onFeeders]);
 
   useEffect(() => { setActive(0); }, [q]);
   useEffect(() => {
@@ -64,8 +66,10 @@ export default function CommandPalette({ open, onOpenChange, gridParties, substa
   const choose = (item) => {
     if (!item) return;
     onOpenChange(false);
-    if (item.kind === "action") onArm();
+    if (item.kind === "action" && item.id === "feeders") onFeeders?.();
+    else if (item.kind === "action") onArm();
     else if (item.kind === "route") onRoute(item.from || null, item.to || null);
+    else if (item.kind === "substation" && onSubstation) onSubstation(item.name);
     else onScan(item.lat, item.lng, item.name);
   };
 
@@ -137,7 +141,7 @@ export default function CommandPalette({ open, onOpenChange, gridParties, substa
                     </div>
                     {selected && (
                       <span className="flex items-center gap-1 text-[10px] text-muted-foreground">
-                        {item.kind === "action" ? "Arm" : item.kind === "route" ? "Route" : "Scan"} <ArrowElbowDownLeft className="h-3 w-3" />
+                        {item.kind === "action" ? (item.id === "feeders" ? "Open" : "Arm") : item.kind === "route" ? "Route" : item.kind === "substation" ? "Customers" : "Scan"} <ArrowElbowDownLeft className="h-3 w-3" />
                       </span>
                     )}
                   </div>
