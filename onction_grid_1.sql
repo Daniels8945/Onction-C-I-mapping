@@ -21,6 +21,7 @@
 DROP VIEW IF EXISTS v_energy_projection;
 DROP VIEW IF EXISTS v_best_source;
 DROP VIEW IF EXISTS v_route_lookup;
+DROP VIEW IF EXISTS v_edge_bi;
 DROP TABLE IF EXISTS route_hop;
 DROP TABLE IF EXISTS route;
 DROP TABLE IF EXISTS offtaker;
