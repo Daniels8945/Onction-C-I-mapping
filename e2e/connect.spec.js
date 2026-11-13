@@ -103,16 +103,20 @@ test.describe("search", () => {
 });
 
 test.describe("infrastructure", () => {
-  test("state context: in-state supply point preferred; off → nearest overall (cross-state)", async ({ page }) => {
+  test("state context: in-state supply point preferred; off → nearest overall (cross-state)", async ({ page, request }) => {
+    // Expected answers from the data (they move when substation positions are corrected).
+    const s = await (await request.get("http://127.0.0.1:4001/api/best-source?lat=6.75&lng=3.38&preferState=1")).json();
+    const nearer = s.dest_join.snap.nearest_overall;
+    expect(nearer.state).not.toBe("Ogun");
     await openApp(page, { errors });
     await search(page, "6.75, 3.38");
     await choose(page, "6.75000, 3.38000");
     const card = page.getByTestId("connect-card");
     await expect(card).toContainText("In Ogun");
-    await expect(page.getByTestId("candidate").filter({ hasText: "Suggested" })).toContainText("Ota 132kV");
+    await expect(page.getByTestId("candidate").filter({ hasText: "Suggested" })).toContainText(s.dest_join.node);
     await page.getByLabel(/Prefer infrastructure in/).uncheck();
-    await expect(page.getByTestId("candidate").filter({ hasText: "Suggested" })).toContainText("Odogunyan", { timeout: 20_000 });
-    await expect(page.getByTestId("candidate").filter({ hasText: "Suggested" })).toContainText("Lagos");
+    await expect(page.getByTestId("candidate").filter({ hasText: "Suggested" })).toContainText(nearer.node, { timeout: 20_000 });
+    await expect(page.getByTestId("candidate").filter({ hasText: "Suggested" })).toContainText(nearer.state);
   });
 
   test("nearby lines: cross-state relationships shown; click → real metadata", async ({ page, request }) => {

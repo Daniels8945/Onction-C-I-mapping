@@ -120,7 +120,7 @@ const feederRow = (f, hoursElapsed) => {
     peakMw: f.peak_mw != null ? Math.round(f.peak_mw * 100) / 100 : null,
     recordingSince: f.first_seen_at,
     position: f.loc_method && f.loc_method !== "none"
-      ? { lat: f.lat, lng: f.lon, method: f.loc_method, precision: f.loc_precision, matchedName: f.matched_name, address: f.loc_address }
+      ? { lat: f.lat, lng: f.lon, state: f.loc_state, method: f.loc_method, precision: f.loc_precision, matchedName: f.matched_name, address: f.loc_address }
       : null,
     positionPending: !f.loc_method,
   };
@@ -131,7 +131,8 @@ const FEEDER_SELECT = `
          f.last_status, f.last_voltage_status, f.first_seen_at,
          r.power_mw, r.quality_flags, COALESCE(r.uptime_h, d.uptime_h) AS uptime_h,
          h.peak_mw, h.online_24h, h.samples_24h, h.hours_24h,
-         l.lat, l.lon, l.method AS loc_method, l.precision AS loc_precision, l.matched_name, l.address AS loc_address
+         COALESCE(l.lat, sub.lat::float) AS lat, COALESCE(l.lon, sub.lon::float) AS lon, l.state AS loc_state,
+         l.method AS loc_method, l.precision AS loc_precision, l.matched_name, l.address AS loc_address
   FROM feeder f
   LEFT JOIN feeder_reading r ON r.feeder_id = f.feeder_id AND r.polled_at = $1
   LEFT JOIN feeder_daily d ON d.feeder_id = f.feeder_id AND d.day = ($1::timestamptz AT TIME ZONE 'Africa/Lagos')::date
@@ -142,7 +143,9 @@ const FEEDER_SELECT = `
            (count(*)            FILTER (WHERE hour > now() - interval '24 hours'))::int AS hours_24h
     FROM feeder_hourly GROUP BY feeder_id
   ) h ON h.feeder_id = f.feeder_id
-  LEFT JOIN feeder_station_location l ON l.station = f.station AND l.state = f.state`;
+  LEFT JOIN feeder_station_alias a ON a.station = f.station AND a.state = f.state
+  LEFT JOIN feeder_station l ON l.id = a.station_id
+  LEFT JOIN substation sub ON l.method = 'network' AND sub.name = l.matched_name`;
 
 feederRouter.get("/api/feeders", async (_req, res, next) => {
   try {
@@ -151,6 +154,14 @@ feederRouter.get("/api/feeders", async (_req, res, next) => {
     await pool.query(LOCATION_DDL);
     const { rows } = await pool.query(`${FEEDER_SELECT}
       WHERE f.last_seen_at > now() - make_interval(hours => $2) ORDER BY f.disco_code, f.name`, [poll.polled_at, SEEN_WITHIN_H]);
+    // The provider can answer "successful" with no feeders at all — say so
+    // instead of showing an empty list.
+    if (!rows.length) {
+      const { rows: [last] } = await pool.query("SELECT max(last_seen_at) AS at FROM feeder");
+      return res.status(503).json({ available: false, reason: last.at
+        ? `The feeder feed is currently sending no feeders. The last feeder data was received ${new Date(last.at).toLocaleString("en-GB", { timeZone: "Africa/Lagos", dateStyle: "medium", timeStyle: "short" })} WAT.`
+        : "The feeder feed hasn't sent any feeders yet." });
+    }
     const hours = Number(poll.hours_elapsed);
     const feeders = rows.map(f => feederRow(f, hours));
     res.json({

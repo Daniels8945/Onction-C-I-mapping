@@ -54,68 +54,68 @@ COMMENT ON TABLE grid_edge IS 'Undirected: each corridor is stored once. Queries
 
 
 INSERT INTO substation (name, voltage_kv, lat, lon, is_injection) VALUES
-  ('Afam', 330, 4.85, 7.25, false),
-  ('Agbara 132kV', 132, 6.495, 3.085, true),
-  ('Aja/Ajah', 330, 6.46, 3.58, true),
-  ('Ajaokuta', 330, 7.5667, 6.6667, false),
-  ('Akangba', 330, 6.55, 3.33, true),
-  ('Alagbon', 330, 6.44, 3.42, true),
-  ('Alaoji', 330, 5.1, 7.35, false),
-  ('Alausa 132kV', 132, 6.618, 3.36, true),
+  ('Afam', 330, 4.850026, 7.254421, false),  -- verified 2026-10-25 (Google satellite): switchyard centre
+  ('Agbara 132kV', 132, 6.504718, 3.084077, true),  -- verified 2026-10-26 (Google satellite + OpenStreetMap): switchyard centre
+  ('Aja/Ajah', 330, 6.470704, 3.571345, true),  -- verified 2026-10-24 (Google satellite): switchyard N of Lekki-Epe Expy by the pedestrian overpass
+  ('Ajaokuta', 330, 7.471999, 6.654886, false),  -- verified 2026-10-26 (Google satellite + OpenStreetMap): switchyard centre
+  ('Akangba', 330, 6.494999, 3.346646, true),  -- verified 2026-10-25 (Google satellite): switchyard centre
+  ('Alagbon', 330, 6.462202, 3.421640, true),    -- verified 2026-10-24 (Google satellite): switchyard by Osborne Rd flyover, Ikoyi
+  ('Alaoji', 330, 5.056533, 7.322044, false),  -- verified 2026-10-25 (Google satellite): switchyard centre
+  ('Alausa 132kV', 132, 6.609741, 3.351362, true),  -- verified 2026-10-26 (Google satellite + OpenStreetMap): switchyard centre
   ('Apapa 132kV', 132, 6.45, 3.36, true),
-  ('Apir/Makurdi', 330, 7.7, 8.5, false),
+  ('Apir/Makurdi', 330, 7.626848, 8.569685, false),  -- verified 2026-10-25 (Google satellite): switchyard centre
   ('Ashaka', 330, 10.83, 11.47, true),
-  ('Ayede (Ibadan)', 330, 7.42, 3.93, true),
-  ('Bauchi', 330, 10.31, 9.84, false),
-  ('Benin', 330, 6.335, 5.6037, true),
-  ('Dadin Kowa', 330, 10.3218, 11.4809, false),
-  ('Dan Agundi 132kV', 132, 11.97, 8.53, true),
-  ('Delta/Ughelli', 330, 5.5, 6.0, false),
-  ('Egbin', 330, 6.58, 3.56, true),
-  ('Ganmo (Ilorin)', 330, 8.45, 4.55, false),
-  ('Geregu', 330, 7.4697, 6.6591, false),
-  ('Gombe', 330, 10.2897, 11.167, true),
-  ('Gwagwalada', 330, 8.94, 7.08, false),
-  ('Ihovbor', 330, 6.47, 5.75, false),
-  ('Ijebu Ode 132kV', 132, 6.8206, 3.9203, true),
-  ('Ijora 132kV', 132, 6.47, 3.37, true),
-  ('Ikeja West', 330, 6.61, 3.32, true),
-  ('Ikorodu 132kV', 132, 6.61, 3.51, true),
-  ('Ilesa 132kV', 132, 7.62, 4.73, true),
+  ('Ayede (Ibadan)', 330, 7.372086, 3.856389, true),  -- verified 2026-10-25 (Google satellite): switchyard centre
+  ('Bauchi', 330, 10.285276, 9.849617, false),  -- verified 2026-10-26 (Google satellite + OpenStreetMap): switchyard centre (probable; see note)
+  ('Benin', 330, 6.295818, 5.634327, true),  -- verified 2026-10-26 (Google satellite + OpenStreetMap): switchyard centre
+  ('Dadin Kowa', 330, 10.319824, 11.479328, false),  -- verified 2026-10-26 (Google satellite + OpenStreetMap): switchyard centre
+  ('Dan Agundi 132kV', 132, 11.980399, 8.522677, true),  -- verified 2026-10-25 (Google satellite): switchyard centre
+  ('Delta/Ughelli', 330, 5.540813, 5.914185, false),  -- verified 2026-10-25 (Google satellite): switchyard centre
+  ('Egbin', 330, 6.565547, 3.614588, true),  -- verified 2026-10-25 (Google satellite): switchyard centre
+  ('Ganmo (Ilorin)', 330, 8.409583, 4.603567, false),  -- verified 2026-10-25 (Google satellite): switchyard centre
+  ('Geregu', 330, 7.470096, 6.657976, false),  -- verified 2026-10-26 (Google satellite + OpenStreetMap): switchyard centre
+  ('Gombe', 330, 10.319494, 11.138283, true),  -- verified 2026-10-26 (Google satellite + OpenStreetMap): switchyard centre
+  ('Gwagwalada', 330, 8.977366, 7.072749, false),  -- verified 2026-10-25 (Google satellite): switchyard centre
+  ('Ihovbor', 330, 6.407643, 5.684229, false),  -- verified 2026-10-25 (Google satellite): switchyard centre
+  ('Ijebu Ode 132kV', 132, 6.836256, 3.919147, true),  -- verified 2026-10-26 (Google satellite + OpenStreetMap): switchyard centre
+  ('Ijora 132kV', 132, 6.468570, 3.379540, true),  -- verified 2026-10-26 (Google satellite + OpenStreetMap): switchyard centre (probable; see note)
+  ('Ikeja West', 330, 6.603138, 3.247592, true),  -- verified 2026-10-25 (Google satellite): switchyard centre
+  ('Ikorodu 132kV', 132, 6.625082, 3.506001, true),  -- verified 2026-10-25 (Google satellite): switchyard centre
+  ('Ilesa 132kV', 132, 7.654828, 4.724906, true),  -- verified 2026-10-25 (Google satellite): switchyard centre
   ('Isolo 132kV', 132, 6.535, 3.32, true),
-  ('Jebba', 330, 9.1333, 4.8167, false),
-  ('Kaduna', 330, 10.6, 7.4, false),
-  ('Kaduna Town 132kV', 132, 10.52, 7.44, true),
-  ('Kainji', 330, 9.8667, 4.6167, false),
-  ('Katampe', 330, 9.0765, 7.483, true),
-  ('Kumbotso (Kano)', 330, 11.9167, 8.5, true),
-  ('Lekki 132kV', 132, 6.45, 3.53, true),
-  ('Lokoja', 330, 7.8, 6.74, false),
-  ('Makeri (Jos)', 330, 9.8965, 8.8583, true),
-  ('Maryland 132kV', 132, 6.57, 3.36, true),
-  ('New Haven', 330, 6.45, 7.5, false),
-  ('Odogunyan 132kV', 132, 6.66, 3.46, true),
-  ('Ogba 132kV', 132, 6.63, 3.34, true),
-  ('Okpai', 330, 5.7235, 6.6021, false),
-  ('Omotosho', 330, 6.75, 4.8, false),
-  ('Onitsha', 330, 6.1667, 6.7833, false),
-  ('Osogbo', 330, 7.7667, 4.5667, false),
-  ('Ota 132kV', 132, 6.7, 3.24, true),
-  ('Oworonshoki 132kV', 132, 6.56, 3.39, true),
-  ('PH Main', 330, 4.808, 7.023, true),
-  ('Papalanto 132kV', 132, 6.9, 3.2, true),
-  ('Sagamu 132kV', 132, 6.84, 3.65, true),
-  ('Sapele', 330, 5.88, 5.7, false),
-  ('Shiroro', 330, 9.9667, 6.8333, false),
-  ('Tamburawa 132kV', 132, 11.875, 8.49, true),
-  ('Ugwuaji', 330, 6.4, 7.5, false),
-  ('Maiduguri 132kV', 132, 11.946083, 13.331139, true),
+  ('Jebba', 330, 9.167714, 4.821275, false),  -- verified 2026-10-26 (Google satellite + OpenStreetMap): switchyard centre
+  ('Kaduna', 330, 10.591982, 7.412295, false),  -- verified 2026-10-25 (Google satellite): switchyard centre
+  ('Kaduna Town 132kV', 132, 10.499237, 7.417080, true),  -- verified 2026-10-25 (Google satellite): switchyard centre
+  ('Kainji', 330, 9.856540, 4.608747, false),  -- verified 2026-10-26 (Google satellite + OpenStreetMap): switchyard centre (probable; see note)
+  ('Katampe', 330, 9.114812, 7.476343, true),  -- verified 2026-10-26 (Google satellite + OpenStreetMap): switchyard centre
+  ('Kumbotso (Kano)', 330, 11.928182, 8.475312, true),  -- verified 2026-10-26 (Google satellite + OpenStreetMap): switchyard centre
+  ('Lekki 132kV', 132, 6.435221, 3.503534, true),  -- verified 2026-10-26 (Google satellite + OpenStreetMap): substation centre (NIPP Lekki, mostly indoor; Google + OpenStreetMap agree)
+  ('Lokoja', 330, 7.822632, 6.630490, false),  -- verified 2026-10-25 (Google satellite): switchyard centre
+  ('Makeri (Jos)', 330, 9.987507, 8.846114, true),  -- verified 2026-10-26 (Google satellite + OpenStreetMap): switchyard centre (probable; see note)
+  ('Maryland 132kV', 132, 6.572907, 3.369423, true),  -- verified 2026-10-25 (Google satellite): switchyard centre
+  ('New Haven', 330, 6.456216, 7.537962, false),  -- verified 2026-10-25 (Google satellite): switchyard centre
+  ('Odogunyan 132kV', 132, 6.678877, 3.524593, true),  -- verified 2026-10-26 (Google satellite + OpenStreetMap): switchyard centre (probable; see note)
+  ('Ogba 132kV', 132, 6.618090, 3.335525, true),  -- verified 2026-10-25 (Google satellite): switchyard centre
+  ('Okpai', 330, 5.711147, 6.575489, false),  -- verified 2026-10-26 (Google satellite + OpenStreetMap): switchyard centre
+  ('Omotosho', 330, 6.735659, 4.709079, false),  -- verified 2026-10-25 (Google satellite): switchyard centre
+  ('Onitsha', 330, 6.116821, 6.802503, false),  -- verified 2026-10-26 (Google satellite + OpenStreetMap): switchyard centre
+  ('Osogbo', 330, 7.800905, 4.577733, false),  -- verified 2026-10-26 (Google satellite + OpenStreetMap): switchyard centre
+  ('Ota 132kV', 132, 6.654628, 3.206559, true),  -- verified 2026-10-25 (Google satellite): switchyard centre
+  ('Oworonshoki 132kV', 132, 6.550300, 3.388890, true),  -- verified 2026-10-26 (Google satellite + OpenStreetMap): switchyard centre ('Oworo Transmission Station')
+  ('PH Main', 330, 4.832033, 7.034888, true),  -- verified 2026-10-26 (Google satellite + OpenStreetMap): switchyard centre (Trans-Amadi; Google + OpenStreetMap agree)
+  ('Papalanto 132kV', 132, 6.881895, 3.313279, true),  -- verified 2026-10-25 (Google satellite): switchyard centre
+  ('Sagamu 132kV', 132, 6.863585, 3.653314, true),  -- verified 2026-10-25 (Google satellite): switchyard centre
+  ('Sapele', 330, 5.925230, 5.643834, false),  -- verified 2026-10-25 (Google satellite): switchyard centre
+  ('Shiroro', 330, 9.972529, 6.830475, false),  -- verified 2026-10-26 (Google satellite + OpenStreetMap): switchyard centre
+  ('Tamburawa 132kV', 132, 11.873515, 8.456874, true),  -- verified 2026-10-26 (Google satellite + OpenStreetMap): switchyard centre
+  ('Ugwuaji', 330, 6.402840, 7.558181, false),  -- verified 2026-10-25 (Google satellite): switchyard centre
+  ('Maiduguri 132kV', 132, 11.856558, 13.139867, true),  -- verified 2026-10-26 (Google satellite + OpenStreetMap): switchyard centre
   -- Cross-referenced against TCN's "Five Existing and One Ongoing Transmission
   -- Line Loops" map. Ikot Ekpene sits on two of the five EXISTING loops (its
   -- corridors are added below). Katsina/Sokoto/Birnin Kebbi sit on the
   -- ONGOING loop only — added as nodes for reference, deliberately left
   -- unconnected below since that line isn't built yet per TCN's own map.
-  ('Ikot Ekpene', 330, 5.1811, 7.7327, true),
+  ('Ikot Ekpene', 330, 5.153202, 7.680684, true),  -- verified 2026-10-26 (Google satellite + OpenStreetMap): switchyard centre
   ('Katsina', 330, 12.9908, 7.6018, true),
   ('Sokoto', 330, 13.0059, 5.2476, true),
   ('Birnin Kebbi', 330, 12.4534, 4.1974, true);
@@ -221,7 +221,7 @@ UPDATE substation SET status = 'proposed' WHERE name IN ('Sokoto', 'Birnin Kebbi
 -- estimates. Deliberately left unconnected (no grid_edge row), like the
 -- other proposed/ongoing reference nodes — it isn't built yet.
 INSERT INTO substation (name, voltage_kv, lat, lon, is_injection, status) VALUES
-  ('New Maiduguri', 330, 11.90, 13.35, true, 'proposed');
+  ('New Maiduguri', 330, 11.740477, 13.082276, true, 'proposed');  -- verified 2026-10-25 (Google satellite): switchyard centre
 
 -- The ongoing Loop 6 corridor's not-yet-built segments (Kano->Katsina->Sokoto
 -- ->Birnin Kebbi->Kainji), added as real grid_edge rows now that they carry a
@@ -295,7 +295,7 @@ INSERT INTO substation (name, voltage_kv, lat, lon, is_injection, status) VALUES
   ('Ayangba', 330, 7.1739, 7.1683, true, 'proposed'),
   ('Nkalagu', 330, 6.4667, 7.7833, true, 'proposed'),
   ('Abakaliki', 330, 6.3249, 8.1137, true, 'proposed'),
-  ('Adiabo Trx', 330, 5.05, 8.3, true, 'proposed'),
+  ('Adiabo Trx', 330, 5.070228, 8.339814, true, 'proposed'),  -- verified 2026-10-25 (Google satellite): switchyard centre
   ('Ogoja', 330, 6.526485, 8.688506, true, 'proposed'),
   ('Ikom', 330, 5.9667, 8.7167, true, 'proposed'),
   ('Zaria', 330, 11.116449, 7.708789, true, 'proposed'),
@@ -410,11 +410,11 @@ INSERT INTO genco (name, lat, lon, connection_node, capacity_note, commitment, t
   ('Maiduguri Emergency Power Project (MEPP)', 11.946083, 13.331139, 'Maiduguri 132kV', NULL, NULL, NULL);
 
 INSERT INTO disco (name, lat, lon, injection_node, contracted, upstream_source, last_mile_km) VALUES
-  ('JED (Jos)', 9.8965, 8.8583, 'Makeri (Jos)', '18 MW delivered / 36 MW contracted', 'Mainstream', 0.0),
+  ('JED (Jos)', 9.987507, 8.846114, 'Makeri (Jos)', '18 MW delivered / 36 MW contracted', 'Mainstream', 0.0),
   ('IBEDC', 7.373, 3.902, 'Ayede (Ibadan)', '50 MW + 85 MW MESL line', 'Mainstream', 6.1),
   ('KEDCO', 12.0001, 8.5167, 'Kumbotso (Kano)', '163 MW total / 93 MW ToP', 'Okpai + Mabon + Voltworx', 9.4),
-  ('BEDC', 6.335, 5.6037, 'Benin', '20 MW / ToP 20 MW', 'Okpai', 0.0),
-  ('PHEDC', 4.808, 7.023, 'PH Main', '40 MW / ToP 40 MW', 'Okpai', 0.0),
+  ('BEDC', 6.295818, 5.634327, 'Benin', '20 MW / ToP 20 MW', 'Okpai', 0.0),
+  ('PHEDC', 4.832033, 7.034888, 'PH Main', '40 MW / ToP 40 MW', 'Okpai', 0.0),
   ('Eko DisCo', 6.4531, 3.3958, 'Aja/Ajah', '100 MW / ToP 50 MW', 'Okpai', 20.4);
 
 INSERT INTO offtaker (name, capacity_mw, lat, lon, location, injection_node, last_mile_km) VALUES

@@ -1,0 +1,450 @@
+[
+  {
+    "name": "Aja/Ajah",
+    "lat": 6.470704,
+    "lng": 3.571345,
+    "verified": "2026-10-24",
+    "how": "Google satellite (Map Tiles) + Google Places 'Transmission Company of Nigeria Ajah Sub Region'",
+    "note": "Switchyard north of the Lekki-Epe Expressway beside the pedestrian overpass."
+  },
+  {
+    "name": "Alagbon",
+    "lat": 6.462202,
+    "lng": 3.42164,
+    "verified": "2026-10-24",
+    "how": "Google satellite (Map Tiles) + Google Places 'Transmission Company of Nigeria, Alagbon Transmission Station, 2A Osborne Rd, Ikoyi'",
+    "note": "Main switchyard by the Osborne Road flyover, Ikoyi."
+  },
+  {
+    "name": "Adiabo Trx",
+    "lat": 5.070228,
+    "lng": 8.339814,
+    "verified": "2026-10-25",
+    "how": "Google satellite (Map Tiles): switchyard centre, approved on the coordinate review page",
+    "note": ""
+  },
+  {
+    "name": "Afam",
+    "lat": 4.850026,
+    "lng": 7.254421,
+    "verified": "2026-10-25",
+    "how": "Google satellite (Map Tiles): switchyard centre, approved on the coordinate review page",
+    "note": ""
+  },
+  {
+    "name": "Akangba",
+    "lat": 6.494999,
+    "lng": 3.346646,
+    "verified": "2026-10-25",
+    "how": "Google satellite (Map Tiles): switchyard centre, approved on the coordinate review page",
+    "note": ""
+  },
+  {
+    "name": "Apir/Makurdi",
+    "lat": 7.626848,
+    "lng": 8.569685,
+    "verified": "2026-10-25",
+    "how": "Google satellite (Map Tiles): switchyard centre, approved on the coordinate review page",
+    "note": ""
+  },
+  {
+    "name": "Ayede (Ibadan)",
+    "lat": 7.372086,
+    "lng": 3.856389,
+    "verified": "2026-10-25",
+    "how": "Google satellite (Map Tiles): switchyard centre, approved on the coordinate review page",
+    "note": ""
+  },
+  {
+    "name": "Dan Agundi 132kV",
+    "lat": 11.980399,
+    "lng": 8.522677,
+    "verified": "2026-10-25",
+    "how": "Google satellite (Map Tiles): switchyard centre, approved on the coordinate review page",
+    "note": ""
+  },
+  {
+    "name": "Ganmo (Ilorin)",
+    "lat": 8.409583,
+    "lng": 4.603567,
+    "verified": "2026-10-25",
+    "how": "Google satellite (Map Tiles): switchyard centre, approved on the coordinate review page",
+    "note": ""
+  },
+  {
+    "name": "Ihovbor",
+    "lat": 6.407643,
+    "lng": 5.684229,
+    "verified": "2026-10-25",
+    "how": "Google satellite (Map Tiles): switchyard centre, approved on the coordinate review page",
+    "note": ""
+  },
+  {
+    "name": "Ikeja West",
+    "lat": 6.603138,
+    "lng": 3.247592,
+    "verified": "2026-10-25",
+    "how": "Google satellite (Map Tiles): switchyard centre, approved on the coordinate review page",
+    "note": ""
+  },
+  {
+    "name": "Lokoja",
+    "lat": 7.822632,
+    "lng": 6.63049,
+    "verified": "2026-10-25",
+    "how": "Google satellite (Map Tiles): switchyard centre, approved on the coordinate review page",
+    "note": ""
+  },
+  {
+    "name": "New Haven",
+    "lat": 6.456216,
+    "lng": 7.537962,
+    "verified": "2026-10-25",
+    "how": "Google satellite (Map Tiles): switchyard centre, approved on the coordinate review page",
+    "note": ""
+  },
+  {
+    "name": "New Maiduguri",
+    "lat": 11.740477,
+    "lng": 13.082276,
+    "verified": "2026-10-25",
+    "how": "Google satellite (Map Tiles): switchyard centre, approved on the coordinate review page",
+    "note": ""
+  },
+  {
+    "name": "Ogba 132kV",
+    "lat": 6.61809,
+    "lng": 3.335525,
+    "verified": "2026-10-25",
+    "how": "Google satellite (Map Tiles): switchyard centre, approved on the coordinate review page",
+    "note": ""
+  },
+  {
+    "name": "Ota 132kV",
+    "lat": 6.654628,
+    "lng": 3.206559,
+    "verified": "2026-10-25",
+    "how": "Google satellite (Map Tiles): switchyard centre, approved on the coordinate review page",
+    "note": ""
+  },
+  {
+    "name": "Sagamu 132kV",
+    "lat": 6.863585,
+    "lng": 3.653314,
+    "verified": "2026-10-25",
+    "how": "Google satellite (Map Tiles): switchyard centre, approved on the coordinate review page",
+    "note": ""
+  },
+  {
+    "name": "Sapele",
+    "lat": 5.92523,
+    "lng": 5.643834,
+    "verified": "2026-10-25",
+    "how": "Google satellite (Map Tiles): switchyard centre, approved on the coordinate review page",
+    "note": ""
+  },
+  {
+    "name": "Ugwuaji",
+    "lat": 6.40284,
+    "lng": 7.558181,
+    "verified": "2026-10-25",
+    "how": "Google satellite (Map Tiles): switchyard centre, approved on the coordinate review page",
+    "note": ""
+  },
+  {
+    "name": "Alaoji",
+    "lat": 5.056533,
+    "lng": 7.322044,
+    "verified": "2026-10-25",
+    "how": "Google satellite (Map Tiles): switchyard centre, approved on the coordinate review page",
+    "note": ""
+  },
+  {
+    "name": "Delta/Ughelli",
+    "lat": 5.540813,
+    "lng": 5.914185,
+    "verified": "2026-10-25",
+    "how": "Google satellite (Map Tiles): switchyard centre, approved on the coordinate review page",
+    "note": ""
+  },
+  {
+    "name": "Egbin",
+    "lat": 6.565547,
+    "lng": 3.614588,
+    "verified": "2026-10-25",
+    "how": "Google satellite (Map Tiles): switchyard centre, approved on the coordinate review page",
+    "note": ""
+  },
+  {
+    "name": "Gwagwalada",
+    "lat": 8.977366,
+    "lng": 7.072749,
+    "verified": "2026-10-25",
+    "how": "Google satellite (Map Tiles): switchyard centre, approved on the coordinate review page",
+    "note": ""
+  },
+  {
+    "name": "Ikorodu 132kV",
+    "lat": 6.625082,
+    "lng": 3.506001,
+    "verified": "2026-10-25",
+    "how": "Google satellite (Map Tiles): switchyard centre, approved on the coordinate review page",
+    "note": ""
+  },
+  {
+    "name": "Ilesa 132kV",
+    "lat": 7.654828,
+    "lng": 4.724906,
+    "verified": "2026-10-25",
+    "how": "Google satellite (Map Tiles): switchyard centre, approved on the coordinate review page",
+    "note": ""
+  },
+  {
+    "name": "Kaduna",
+    "lat": 10.591982,
+    "lng": 7.412295,
+    "verified": "2026-10-25",
+    "how": "Google satellite (Map Tiles): switchyard centre, approved on the coordinate review page",
+    "note": ""
+  },
+  {
+    "name": "Omotosho",
+    "lat": 6.735659,
+    "lng": 4.709079,
+    "verified": "2026-10-25",
+    "how": "Google satellite (Map Tiles): switchyard centre, approved on the coordinate review page",
+    "note": ""
+  },
+  {
+    "name": "Kaduna Town 132kV",
+    "lat": 10.499237,
+    "lng": 7.41708,
+    "verified": "2026-10-25",
+    "how": "Google satellite (Map Tiles): switchyard centre, approved on the coordinate review page",
+    "note": ""
+  },
+  {
+    "name": "Maryland 132kV",
+    "lat": 6.572907,
+    "lng": 3.369423,
+    "verified": "2026-10-25",
+    "how": "Google satellite (Map Tiles): switchyard centre, approved on the coordinate review page",
+    "note": ""
+  },
+  {
+    "name": "Papalanto 132kV",
+    "lat": 6.881895,
+    "lng": 3.313279,
+    "verified": "2026-10-25",
+    "how": "Google satellite (Map Tiles): switchyard centre, approved on the coordinate review page",
+    "note": ""
+  },
+  {
+    "name": "Agbara 132kV",
+    "lat": 6.504718,
+    "lng": 3.084077,
+    "verified": "2026-10-26",
+    "how": "Google satellite (Map Tiles): switchyard centre; position found via Google Places / OpenStreetMap",
+    "note": ""
+  },
+  {
+    "name": "Ajaokuta",
+    "lat": 7.471999,
+    "lng": 6.654886,
+    "verified": "2026-10-26",
+    "how": "Google satellite (Map Tiles): switchyard centre; position found via Google Places / OpenStreetMap",
+    "note": ""
+  },
+  {
+    "name": "Alausa 132kV",
+    "lat": 6.609741,
+    "lng": 3.351362,
+    "verified": "2026-10-26",
+    "how": "Google satellite (Map Tiles): switchyard centre; position found via Google Places / OpenStreetMap",
+    "note": ""
+  },
+  {
+    "name": "Benin",
+    "lat": 6.295818,
+    "lng": 5.634327,
+    "verified": "2026-10-26",
+    "how": "Google satellite (Map Tiles): switchyard centre; position found via Google Places / OpenStreetMap",
+    "note": ""
+  },
+  {
+    "name": "Dadin Kowa",
+    "lat": 10.319824,
+    "lng": 11.479328,
+    "verified": "2026-10-26",
+    "how": "Google satellite (Map Tiles): switchyard centre; position found via Google Places / OpenStreetMap",
+    "note": ""
+  },
+  {
+    "name": "Geregu",
+    "lat": 7.470096,
+    "lng": 6.657976,
+    "verified": "2026-10-26",
+    "how": "Google satellite (Map Tiles): switchyard centre; position found via Google Places / OpenStreetMap",
+    "note": ""
+  },
+  {
+    "name": "Gombe",
+    "lat": 10.319494,
+    "lng": 11.138283,
+    "verified": "2026-10-26",
+    "how": "Google satellite (Map Tiles): switchyard centre; position found via Google Places / OpenStreetMap",
+    "note": ""
+  },
+  {
+    "name": "Ijebu Ode 132kV",
+    "lat": 6.836256,
+    "lng": 3.919147,
+    "verified": "2026-10-26",
+    "how": "Google satellite (Map Tiles): switchyard centre; position found via Google Places / OpenStreetMap",
+    "note": ""
+  },
+  {
+    "name": "Ikot Ekpene",
+    "lat": 5.153202,
+    "lng": 7.680684,
+    "verified": "2026-10-26",
+    "how": "Google satellite (Map Tiles): switchyard centre; position found via Google Places / OpenStreetMap",
+    "note": ""
+  },
+  {
+    "name": "Jebba",
+    "lat": 9.167714,
+    "lng": 4.821275,
+    "verified": "2026-10-26",
+    "how": "Google satellite (Map Tiles): switchyard centre; position found via Google Places / OpenStreetMap",
+    "note": ""
+  },
+  {
+    "name": "Kainji",
+    "lat": 9.85654,
+    "lng": 4.608747,
+    "verified": "2026-10-26",
+    "how": "Google satellite (Map Tiles): switchyard centre; position found via Google Places / OpenStreetMap",
+    "note": "Two yards here: the switchyard on the dam island and the 330/132 kV transmission station 1 km south-west. Pinned the transmission station, where the lines to Jebba and Birnin Kebbi start."
+  },
+  {
+    "name": "Katampe",
+    "lat": 9.114812,
+    "lng": 7.476343,
+    "verified": "2026-10-26",
+    "how": "Google satellite (Map Tiles): switchyard centre; position found via Google Places / OpenStreetMap",
+    "note": ""
+  },
+  {
+    "name": "Kumbotso (Kano)",
+    "lat": 11.928182,
+    "lng": 8.475312,
+    "verified": "2026-10-26",
+    "how": "Google satellite (Map Tiles): switchyard centre; position found via Google Places / OpenStreetMap",
+    "note": ""
+  },
+  {
+    "name": "Maiduguri 132kV",
+    "lat": 11.856558,
+    "lng": 13.139867,
+    "verified": "2026-10-26",
+    "how": "Google satellite (Map Tiles): switchyard centre; position found via Google Places / OpenStreetMap",
+    "note": ""
+  },
+  {
+    "name": "Makeri (Jos)",
+    "lat": 9.987507,
+    "lng": 8.846114,
+    "verified": "2026-10-26",
+    "how": "Google satellite (Map Tiles): switchyard centre; position found via Google Places / OpenStreetMap",
+    "note": "Our record is the 330 kV Jos station (lines to Makurdi, Bauchi and Kaduna). The only 330 kV yard near Jos is this one, 10 km north. The small yard in Makeri itself is 132 kV only. Reject if 'Makeri' should mean the 132 kV station."
+  },
+  {
+    "name": "Okpai",
+    "lat": 5.711147,
+    "lng": 6.575489,
+    "verified": "2026-10-26",
+    "how": "Google satellite (Map Tiles): switchyard centre; position found via Google Places / OpenStreetMap",
+    "note": ""
+  },
+  {
+    "name": "Onitsha",
+    "lat": 6.116821,
+    "lng": 6.802503,
+    "verified": "2026-10-26",
+    "how": "Google satellite (Map Tiles): switchyard centre; position found via Google Places / OpenStreetMap",
+    "note": ""
+  },
+  {
+    "name": "Osogbo",
+    "lat": 7.800905,
+    "lng": 4.577733,
+    "verified": "2026-10-26",
+    "how": "Google satellite (Map Tiles): switchyard centre; position found via Google Places / OpenStreetMap",
+    "note": ""
+  },
+  {
+    "name": "Shiroro",
+    "lat": 9.972529,
+    "lng": 6.830475,
+    "verified": "2026-10-26",
+    "how": "Google satellite (Map Tiles): switchyard centre; position found via Google Places / OpenStreetMap",
+    "note": ""
+  },
+  {
+    "name": "Tamburawa 132kV",
+    "lat": 11.873515,
+    "lng": 8.456874,
+    "verified": "2026-10-26",
+    "how": "Google satellite (Map Tiles): switchyard centre; position found via Google Places / OpenStreetMap",
+    "note": ""
+  },
+  {
+    "name": "Ijora 132kV",
+    "lat": 6.46857,
+    "lng": 3.37954,
+    "verified": "2026-10-26",
+    "how": "Google satellite (Map Tiles): switchyard centre; position found via Google Places / OpenStreetMap",
+    "note": "A small yard among warehouses. Google has a second 'TCN 132/33 kV' pin 1 km west, but nothing is visible there."
+  },
+  {
+    "name": "Bauchi",
+    "lat": 10.285276,
+    "lng": 9.849617,
+    "verified": "2026-10-26",
+    "how": "Google satellite (Map Tiles): switchyard centre; position found via Google Places / OpenStreetMap",
+    "note": "A small yard 3 km from where we had it. OSM tags it 132 kV but our record is 330 kV; no larger yard was found nearby."
+  },
+  {
+    "name": "PH Main",
+    "lat": 4.832033,
+    "lng": 7.034888,
+    "verified": "2026-10-26",
+    "how": "Google satellite (Map Tiles): switchyard centre; position found via Google Places / OpenStreetMap",
+    "note": ""
+  },
+  {
+    "name": "Lekki 132kV",
+    "lat": 6.435221,
+    "lng": 3.503534,
+    "verified": "2026-10-26",
+    "how": "Google satellite (Map Tiles): substation centre; position found via Google Places / OpenStreetMap",
+    "note": ""
+  },
+  {
+    "name": "Odogunyan 132kV",
+    "lat": 6.678877,
+    "lng": 3.524593,
+    "verified": "2026-10-26",
+    "how": "Google satellite (Map Tiles): switchyard centre; position found via Google Places / OpenStreetMap",
+    "note": "The only switchyard in the Odogunyan area north of Ikorodu; no name on Google or OpenStreetMap."
+  },
+  {
+    "name": "Oworonshoki 132kV",
+    "lat": 6.5503,
+    "lng": 3.38889,
+    "verified": "2026-10-26",
+    "how": "Google satellite (Map Tiles): switchyard centre; position found via Google Places / OpenStreetMap",
+    "note": "Google calls it 'Oworo Transmission Station'; OpenStreetMap 'Gbagada Substation'."
+  }
+]

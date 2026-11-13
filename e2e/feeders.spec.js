@@ -38,7 +38,9 @@ test.describe("API", () => {
       if (seen.has(k)) continue;
       seen.add(k);
       const at = await (await request.get(`${API}/api/locate?lat=${f.position.lat}&lng=${f.position.lng}`)).json();
-      expect(norm(at.state), `${f.station} (${f.state})`).toBe(norm(f.state));
+      // The station's own state — the feed sometimes lists the DisCo's state
+      // instead ("OTA TS" under Lagos; Ota is in Ogun).
+      expect(norm(at.state), `${f.station} (${f.position.state})`).toBe(norm(f.position.state));
       expect(["network", "google"]).toContain(f.position.method);
     }
   });

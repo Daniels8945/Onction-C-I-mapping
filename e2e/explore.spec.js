@@ -160,6 +160,13 @@ test.describe("choosing the supply substation", () => {
     await openApp(page);
     const card = await scanAscon(page);
     await page.waitForFunction(() => !window.__gisMap.isMoving() && window.__gisMap.getSource("scan-pts-src"));
+    // Zoom in on Lokoja so no other marker (the GenCos near Ajaokuta) sits on top of it.
+    await page.evaluate(() => {
+      const f = window.__gisMap.querySourceFeatures("scan-pts-src").find(x => x.properties.name === "Lokoja");
+      window.__gisMap.jumpTo({ center: f.geometry.coordinates, zoom: 10 });
+    });
+    await page.waitForFunction(() => !window.__gisMap.isMoving());
+    await page.waitForTimeout(600);
     const xy = await page.evaluate(() => {
       const f = window.__gisMap.querySourceFeatures("scan-pts-src").find(x => x.properties.name === "Lokoja");
       const p = window.__gisMap.project(f.geometry.coordinates);
@@ -248,7 +255,11 @@ test("scan and connect agree on the supply point; the in-state choice is explain
   await page.keyboard.press(process.platform === "darwin" ? "Meta+K" : "Control+K");
   await page.getByRole("dialog").locator("input").first().fill("6.75, 3.38");
   await page.getByRole("dialog").getByText(/6\.75.*3\.38/).first().click();
+  // Expected answer from the data (it moves when substation positions are corrected).
+  const s = await (await request.get(`${API}/api/best-source?lat=6.75&lng=3.38&preferState=1`)).json();
   const card = page.getByTestId("scan-card");
-  await expect(card.getByTestId("scan-supply")).toContainText("Ota 132kV", { timeout: 30_000 });
-  await expect(card).toContainText("Odogunyan 132kV in Lagos is slightly nearer");
+  await expect(card.getByTestId("scan-supply")).toContainText(s.dest_join.node, { timeout: 30_000 });
+  const nearer = s.dest_join.snap?.nearest_overall;
+  expect(nearer, "this site sits near a state boundary, so the in-state rule should apply").toBeTruthy();
+  await expect(card).toContainText(`${nearer.node} in ${nearer.state} is slightly nearer`);
 });

@@ -7,8 +7,15 @@
 //             ("site" when the result is an electrical facility; "area" when
 //             Google only knows a place or street of that name — approximate)
 //   none      not found; the feeder is listed but not drawn
-// Each lookup is stored (feeder_station_location) and done once per station;
-// new stations are picked up a few at a time in the background.
+//
+// One physical station = ONE row (feeder_station). The feed often writes a
+// station several ways — "ALAGBON TS" under "Lagos" and "Eko", "OTA TS" under
+// "Lagos" (the DisCo's state) and "Ogun" (where it is) — so each (station,
+// state) spelling the feed uses is an alias pointing at that one row
+// (feeder_station_alias). Stations matched to the network data store no
+// coordinates of their own: they point at the substation (matched_name) and
+// take its position, so a substation correction moves them too.
+// Lookups run once per station, a few at a time in the background.
 
 import { pool } from "../db.js";
 import { locate, normaliseStateName, stateBBox } from "../geo/admin.js";
@@ -19,16 +26,24 @@ const ROUND_MS = 60_000;       // one round a minute until all are done
 const RETRY_NONE_DAYS = 14;    // look again for stations not found after this
 
 export const DDL = `
-CREATE TABLE IF NOT EXISTS feeder_station_location (
-  station      text NOT NULL,
-  state        text NOT NULL,
-  lat          double precision,
+CREATE TABLE IF NOT EXISTS feeder_station (
+  id           serial PRIMARY KEY,
+  name         text NOT NULL,           -- as the feed first wrote it
+  name_key     text NOT NULL,           -- upper-case, single-spaced
+  state        text,                    -- where the station is (normalised)
+  lat          double precision,        -- NULL for network matches: see matched_name
   lon          double precision,
   method       text NOT NULL,           -- network | google | none
   precision    text,                    -- site | area (google only)
-  matched_name text,                    -- what it was matched to
+  matched_name text,                    -- network: the substation's name; google: the place's
   address      text,
   looked_up_at timestamptz NOT NULL DEFAULT now(),
+  UNIQUE (name_key, state)
+);
+CREATE TABLE IF NOT EXISTS feeder_station_alias (
+  station    text NOT NULL,              -- exactly as the feed writes it
+  state      text NOT NULL,
+  station_id integer NOT NULL REFERENCES feeder_station (id) ON DELETE CASCADE,
   PRIMARY KEY (station, state)
 );`;
 
@@ -44,6 +59,7 @@ export function cleanStation(raw) {
   s = s.replace(/\blocal\b/g, " ").replace(/[^a-z0-9/ ]/g, " ").replace(/\s+/g, " ").trim();
   return { name: s, kind: kind || "injection" };
 }
+export const nameKey = (raw) => String(raw || "").trim().replace(/\s+/g, " ").toUpperCase();
 export const tokens = (s) => String(s).toLowerCase().replace(/[^a-z0-9]+/g, " ").split(" ").filter(t => t.length > 2 && !["kv", "the"].includes(t));
 const base = (name) => tokens(String(name).replace(/\b\d+\s*kv\b/ig, "")).join(" ");
 
@@ -57,14 +73,19 @@ export const stateOf = (raw) => normaliseStateName(STATE_ALIASES[String(raw || "
 export function matchNetwork(clean, state, substations) {
   const want = tokens(clean.name);
   if (!want.length) return null;
-  return substations.find(s => {
+  const inState = substations.find(s => {
     if (s.state !== state || s.status !== "existing") return false;
     if (base(s.name) === want.join(" ")) return true;
     const have = tokens(s.name.replace(/\b\d+\s*kv\b/i, ""));
     // "AJAH TS" is the "Aja/Ajah" transmission station: every word of the
     // feed's name appears in ours (ours may carry a variant spelling too).
     return clean.kind === "transmission" && have.length && want.every(t => have.includes(t));
-  }) || null;
+  });
+  if (inState || clean.kind !== "transmission") return inState || null;
+  // The feed sometimes lists a transmission station under its DisCo's state
+  // ("OMOTOSHO TS" under Edo; Omotosho is in Ondo). Exact name, one match only.
+  const anywhere = substations.filter(s => s.status === "existing" && base(s.name) === want.join(" "));
+  return anywhere.length === 1 ? anywhere[0] : null;
 }
 
 const ELECTRICAL = /substation|injection|\binj\b|transmission|\bkv\b|\btcn\b|\bphcn\b|\bnepa\b|power holding/i;
@@ -105,39 +126,123 @@ export async function matchGoogle(clean, state) {
   return area ? { ...area, precision: "area" } : null;
 }
 
-// Look up up to BATCH stations that have no stored location yet (or whose
-// "not found" is old). Returns how many were looked up.
+const QUALITY = { network: 3, google: 2, none: 0 };
+const better = (a, b) => (QUALITY[a.method] + (a.precision === "site" ? 0.5 : 0)) > (QUALITY[b.method] + (b.precision === "site" ? 0.5 : 0));
+const kmBetween = (a, b) => {
+  const r = (x) => (x * Math.PI) / 180, dLat = r(b.lat - a.lat), dLon = r(b.lon - a.lon);
+  return 2 * 6371 * Math.asin(Math.sqrt(Math.sin(dLat / 2) ** 2 + Math.cos(r(a.lat)) * Math.cos(r(b.lat)) * Math.sin(dLon / 2) ** 2));
+};
+
+// Look a station up: network data first, then Google. Throws on a Google
+// error so the caller can try again later.
+async function lookUp(raw, state, substations) {
+  const clean = cleanStation(raw);
+  if (!state) return { method: "none" };
+  const net = matchNetwork(clean, state, substations);
+  // A network match can be in another state than the feed says; the station row takes its real state.
+  if (net) return { method: "network", precision: "site", matched_name: net.name, lat: net.lat, lon: net.lon, ...(net.state && net.state !== state && { state: net.state }) };
+  const g = await matchGoogle(clean, state);
+  return g ? { method: "google", precision: g.precision, matched_name: g.name, address: g.address, lat: g.lat, lon: g.lon } : { method: "none" };
+}
+
+// Which station row a found location belongs to: an existing row with the
+// same name in the same state, or — for transmission stations, which are
+// named after their town — the same name anywhere it was found, or the same
+// name within 2 km. Otherwise a new row.
+async function stationFor(client, raw, state, found) {
+  const key = nameKey(raw);
+  const { rows: same } = await client.query(`
+    SELECT s.*, COALESCE(s.lat, sub.lat::float) AS plat, COALESCE(s.lon, sub.lon::float) AS plon
+    FROM feeder_station s LEFT JOIN substation sub ON s.method = 'network' AND sub.name = s.matched_name
+    WHERE s.name_key = $1`, [key]);
+  const transmission = cleanStation(raw).kind === "transmission";
+  const located = same.filter(s => s.method !== "none");
+  let target = null;
+  if (found.method !== "none") {
+    const here = { lat: found.lat, lon: found.lon };
+    target = located.find(s => kmBetween(here, { lat: s.plat, lon: s.plon }) < 2)
+      || (transmission && located[0])
+      || same.find(s => s.state === state && s.method === "none")   // upgrade a not-found row
+      || null;
+  } else {
+    target = (transmission && located[0]) || same.find(s => s.state === state) || null;
+  }
+  const store = (f) => [f.method === "network" ? null : f.lat ?? null, f.method === "network" ? null : f.lon ?? null,
+    f.method, f.precision || null, f.matched_name || null, f.address || null];
+  if (target) {
+    if (found.method !== "none" && (target.method === "none" || better(found, target))) {
+      await client.query(`UPDATE feeder_station SET lat=$2, lon=$3, method=$4, precision=$5, matched_name=$6, address=$7, looked_up_at=now(),
+        state = $8 WHERE id = $1`, [target.id, ...store(found), state || target.state]);
+    }
+    return target.id;
+  }
+  const { rows: [ins] } = await client.query(`
+    INSERT INTO feeder_station (name, name_key, state, lat, lon, method, precision, matched_name, address)
+    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+    ON CONFLICT (name_key, state) DO UPDATE SET name_key = EXCLUDED.name_key RETURNING id`,
+    [String(raw).trim(), key, state, ...store(found)]);
+  return ins.id;
+}
+
+// One-time: the old one-row-per-spelling table (feeder_station_location)
+// becomes stations + aliases, best result first, no new lookups.
+async function migrateLegacy() {
+  const { rows: [t] } = await pool.query("SELECT to_regclass('feeder_station_location') IS NOT NULL AS ok");
+  if (!t.ok) return;
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const { rows } = await client.query("SELECT * FROM feeder_station_location");
+    rows.sort((a, b) => (better(a, b) ? -1 : better(b, a) ? 1 : 0));
+    for (const r of rows) {
+      const found = r.method === "none" ? { method: "none" } : { method: r.method, precision: r.precision, matched_name: r.matched_name, address: r.address, lat: r.lat, lon: r.lon };
+      const id = await stationFor(client, r.station, stateOf(r.state), found);
+      await client.query("INSERT INTO feeder_station_alias (station, state, station_id) VALUES ($1,$2,$3) ON CONFLICT (station, state) DO UPDATE SET station_id = EXCLUDED.station_id", [r.station, r.state, id]);
+    }
+    await client.query("DROP TABLE feeder_station_location");
+    await client.query("COMMIT");
+    console.log(`feeder stations: ${rows.length} spellings migrated to one row per station`);
+  } catch (e) { await client.query("ROLLBACK"); throw e; } finally { client.release(); }
+}
+
+// Up to BATCH station spellings with no station yet, plus not-found stations
+// due another look. Returns how many were handled.
 export async function locateSomeStations(graph) {
   await pool.query(DDL);
-  const { rows } = await pool.query(`
-    SELECT DISTINCT f.station, f.state FROM feeder f
-    LEFT JOIN feeder_station_location l ON l.station = f.station AND l.state = f.state
-    WHERE f.station IS NOT NULL AND f.state IS NOT NULL
-      AND (l.station IS NULL OR (l.method = 'none' AND l.looked_up_at < now() - make_interval(days => $1)))
-    LIMIT $2`, [RETRY_NONE_DAYS, BATCH]);
+  await migrateLegacy();
   const substations = [...graph.nodes.values()];
-  for (const { station, state: rawState } of rows) {
+  const { rows: fresh } = await pool.query(`
+    SELECT DISTINCT f.station, f.state FROM feeder f
+    LEFT JOIN feeder_station_alias a ON a.station = f.station AND a.state = f.state
+    WHERE f.station IS NOT NULL AND f.state IS NOT NULL AND a.station IS NULL LIMIT $1`, [BATCH]);
+  for (const { station, state: rawState } of fresh) {
     const state = stateOf(rawState);
-    const clean = cleanStation(station);
-    let row = { method: "none", lat: null, lon: null, precision: null, matched_name: null, address: null };
-    if (state) {
-      const net = matchNetwork(clean, state, substations);
-      if (net) row = { method: "network", lat: net.lat, lon: net.lon, precision: "site", matched_name: net.name, address: null };
-      else {
-        try {
-          const g = await matchGoogle(clean, state);
-          if (g) row = { method: "google", lat: g.lat, lon: g.lon, precision: g.precision, matched_name: g.name, address: g.address };
-        } catch (e) { console.error(`feeder station lookup failed (${station}, ${rawState}): ${e.message}`); continue; } // try again next round
-      }
-    }
-    await pool.query(`
-      INSERT INTO feeder_station_location (station, state, lat, lon, method, precision, matched_name, address, looked_up_at)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8, now())
-      ON CONFLICT (station, state) DO UPDATE SET lat = EXCLUDED.lat, lon = EXCLUDED.lon, method = EXCLUDED.method,
-        precision = EXCLUDED.precision, matched_name = EXCLUDED.matched_name, address = EXCLUDED.address, looked_up_at = now()`,
-      [station, rawState, row.lat, row.lon, row.method, row.precision, row.matched_name, row.address]);
+    let found;
+    try { found = await lookUp(station, state, substations); }
+    catch (e) { console.error(`feeder station lookup failed (${station}, ${rawState}): ${e.message}`); continue; }
+    const client = await pool.connect();
+    try {
+      const id = await stationFor(client, station, found.state || state, found);
+      await client.query("INSERT INTO feeder_station_alias (station, state, station_id) VALUES ($1,$2,$3) ON CONFLICT DO NOTHING", [station, rawState, id]);
+    } finally { client.release(); }
   }
-  return rows.length;
+  const { rows: stale } = await pool.query(`
+    SELECT id, name, state FROM feeder_station WHERE method = 'none' AND looked_up_at < now() - make_interval(days => $1) LIMIT $2`,
+    [RETRY_NONE_DAYS, Math.max(0, BATCH - fresh.length)]);
+  for (const s of stale) {
+    let found;
+    try { found = await lookUp(s.name, s.state, substations); } catch { continue; }
+    if (found.method === "none") { await pool.query("UPDATE feeder_station SET looked_up_at = now() WHERE id = $1", [s.id]); continue; }
+    const client = await pool.connect();
+    try {
+      const id = await stationFor(client, s.name, found.state || s.state, found);
+      if (id !== s.id) {   // it turned out to be a station we already have: fold this one into it
+        await client.query("UPDATE feeder_station_alias SET station_id = $1 WHERE station_id = $2", [id, s.id]);
+        await client.query("DELETE FROM feeder_station WHERE id = $1", [s.id]);
+      }
+    } finally { client.release(); }
+  }
+  return fresh.length + stale.length;
 }
 
 // Background: keep going a batch a minute while there's anything to find.

@@ -75,6 +75,14 @@ async function fetchFeeders() {
     err.httpStatus = res.status;
     throw err;
   }
+  // The provider can report success with no feeders (seen from 15 Oct 2026,
+  // 16:26 WAT: 991 → 0 between two polls). That's an outage, not "every
+  // feeder vanished" — record it as a failed poll so it shows up.
+  if (body.data.length === 0) {
+    const err = new Error(`Provider returned no feeders ("${String(body.message).slice(0, 80)}") — empty feed`);
+    err.httpStatus = res.status;
+    throw err;
+  }
   return { rows: body.data.filter(r => Number.isInteger(r.feederId)).map(clean), httpStatus: res.status };
 }
 
